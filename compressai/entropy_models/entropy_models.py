@@ -228,6 +228,20 @@ class EntropyModel(nn.Module):
 
         strings = []
         for i in range(symbols.size(0)):
+            kw = dict(
+                symbols =     symbols[i].reshape(-1).int().numpy(),
+                indexes =     indexes[i].reshape(-1).int().numpy(),
+                cdfs =        self._quantized_cdf.numpy(),
+                cdfs_sizes =  self._cdf_length.reshape(-1).int().numpy(),
+                offsets =     self._offset.reshape(-1).int().numpy(),
+            )
+
+            import os
+            os.makedirs("encode_with_indexes", exist_ok=True)
+
+            for k, v in kw.items():
+                np.save(f"encode_with_indexes/{k}.npy", v)
+
             rv = self.entropy_coder.encode_with_indexes(
                 symbols[i].reshape(-1).int().tolist(),
                 indexes[i].reshape(-1).int().tolist(),
@@ -282,6 +296,20 @@ class EntropyModel(nn.Module):
         outputs = cdf.new_empty(indexes.size())
 
         for i, s in enumerate(strings):
+            kw = dict(
+                encoded =     np.array(s, dtype=object),
+                indexes =     indexes[i].reshape(-1).int().numpy(),
+                cdfs =        cdf.numpy(),
+                cdfs_sizes =  self._cdf_length.reshape(-1).int().numpy(),
+                offsets =     self._offset.reshape(-1).int().numpy(),
+            )
+
+            import os
+            os.makedirs("decode_with_indexes", exist_ok=True)
+
+            for k, v in kw.items():
+                np.save(f"decode_with_indexes/{k}.npy", v)
+
             values = self.entropy_coder.decode_with_indexes(
                 s,
                 indexes[i].reshape(-1).int().tolist(),
