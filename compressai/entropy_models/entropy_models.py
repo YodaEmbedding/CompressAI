@@ -229,11 +229,11 @@ class EntropyModel(nn.Module):
         strings = []
         for i in range(symbols.size(0)):
             kw = dict(
-                symbols =     symbols[i].int().numpy(),
-                indexes =     indexes[i].int().numpy(),
-                cdfs =        self._quantized_cdf.numpy(),
-                cdfs_sizes =  self._cdf_length.int().numpy(),
-                offsets =     self._offset.int().numpy(),
+                symbols =     symbols[i].int().cpu().numpy(),
+                indexes =     indexes[i].int().cpu().numpy(),
+                cdfs =        self._quantized_cdf.cpu().numpy(),
+                cdfs_sizes =  self._cdf_length.int().cpu().numpy(),
+                offsets =     self._offset.int().cpu().numpy(),
             )
 
             import os
@@ -298,10 +298,10 @@ class EntropyModel(nn.Module):
         for i, s in enumerate(strings):
             kw = dict(
                 encoded =     np.array(s, dtype=object),
-                indexes =     indexes[i].int().numpy(),
-                cdfs =        cdf.numpy(),
-                cdfs_sizes =  self._cdf_length.int().numpy(),
-                offsets =     self._offset.int().numpy(),
+                indexes =     indexes[i].int().cpu().numpy(),
+                cdfs =        cdf.cpu().numpy(),
+                cdfs_sizes =  self._cdf_length.int().cpu().numpy(),
+                offsets =     self._offset.int().cpu().numpy(),
             )
 
             import os
