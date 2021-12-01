@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 import torch.nn as nn
 
 from compressai.layers import (
@@ -24,6 +25,15 @@ from compressai.layers import (
 )
 
 from .google import JointAutoregressiveHierarchicalPriors
+
+
+class ForceZero(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        x = x * 0
+        return x
 
 
 class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
@@ -53,6 +63,7 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
         )
 
         self.h_a = nn.Sequential(
+            ForceZero(),
             conv3x3(N, N),
             nn.LeakyReLU(inplace=True),
             conv3x3(N, N),
@@ -62,9 +73,11 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
             conv3x3(N, N),
             nn.LeakyReLU(inplace=True),
             conv3x3(N, N, stride=2),
+            ForceZero(),
         )
 
         self.h_s = nn.Sequential(
+            ForceZero(),
             conv3x3(N, N),
             nn.LeakyReLU(inplace=True),
             subpel_conv3x3(N, N, 2),
@@ -74,6 +87,7 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
             subpel_conv3x3(N * 3 // 2, N * 3 // 2, 2),
             nn.LeakyReLU(inplace=True),
             conv3x3(N * 3 // 2, N * 2),
+            ForceZero(),
         )
 
         self.g_s = nn.Sequential(
