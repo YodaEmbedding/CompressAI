@@ -446,9 +446,7 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
 
     def forward(self, x):
         y = self.g_a(x)
-        z = self.h_a(y)
-        z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        params = self.h_s(z_hat)
+        params = torch.zeros_like(y)
 
         y_hat = self.gaussian_conditional.quantize(
             y, "noise" if self.training else "dequantize"
@@ -463,7 +461,7 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
 
         return {
             "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
+            "likelihoods": {"y": y_likelihoods},
         }
 
     @classmethod
@@ -483,19 +481,14 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
             )
 
         y = self.g_a(x)
-        z = self.h_a(y)
-
-        z_strings = self.entropy_bottleneck.compress(z)
-        z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
-
-        params = self.h_s(z_hat)
+        params = torch.zeros_like(y)
 
         s = 4  # scaling factor between z and y
         kernel_size = 5  # context prediction kernel size
         padding = (kernel_size - 1) // 2
 
-        y_height = z_hat.size(2) * s
-        y_width = z_hat.size(3) * s
+        y_height = y.size(2)
+        y_width = y.size(3)
 
         y_hat = F.pad(y, (padding, padding, padding, padding))
 
@@ -511,7 +504,7 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
             )
             y_strings.append(string)
 
-        return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
+        return {"strings": [y_strings], "shape": y.size()}
 
     def _compress_ar(self, y_hat, params, height, width, kernel_size, padding):
         cdf = self.gaussian_conditional.quantized_cdf.tolist()
@@ -558,9 +551,11 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         return string
 
     def decompress(self, strings, shape):
-        assert isinstance(strings, list) and len(strings) == 2
+        assert isinstance(strings, list) and len(strings) == 1
 
-        if next(self.parameters()).device != torch.device("cpu"):
+        device = next(self.parameters()).device
+
+        if device != torch.device("cpu"):
             warnings.warn(
                 "Inference on GPU is not recommended for the autoregressive "
                 "models (the entropy coder is run sequentially on CPU)."
@@ -569,21 +564,20 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         # FIXME: we don't respect the default entropy coder and directly call the
         # range ANS decoder
 
-        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
-        params = self.h_s(z_hat)
+        params = torch.zeros(shape, dtype=torch.float32, device=device)
 
         s = 4  # scaling factor between z and y
         kernel_size = 5  # context prediction kernel size
         padding = (kernel_size - 1) // 2
 
-        y_height = z_hat.size(2) * s
-        y_width = z_hat.size(3) * s
+        y_height = shape[2]
+        y_width = shape[3]
 
         # initialize y_hat to zeros, and pad it so we can directly work with
         # sub-tensors of size (N, C, kernel size, kernel_size)
         y_hat = torch.zeros(
-            (z_hat.size(0), self.M, y_height + 2 * padding, y_width + 2 * padding),
-            device=z_hat.device,
+            (shape[0], self.M, y_height + 2 * padding, y_width + 2 * padding),
+            device=params.device,
         )
 
         for i, y_string in enumerate(strings[0]):
