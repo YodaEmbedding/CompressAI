@@ -32,7 +32,7 @@ class ForceZero(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        x = x * 0
+        x = torch.zeros_like(x)
         return x
 
 
