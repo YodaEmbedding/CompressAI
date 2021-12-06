@@ -236,6 +236,7 @@ def parse_args(argv):
     )
     parser.add_argument(
         "--aux-learning-rate",
+        type=float,
         default=1e-3,
         help="Auxiliary loss learning rate (default: %(default)s)",
     )
@@ -251,7 +252,7 @@ def parse_args(argv):
         "--save", action="store_true", default=True, help="Save model to disk"
     )
     parser.add_argument(
-        "--seed", type=float, help="Set random seed for reproducibility"
+        "--seed", type=int, help="Set random seed for reproducibility"
     )
     parser.add_argument(
         "--clip_max_norm",
