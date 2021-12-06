@@ -64,28 +64,16 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
 
         self.h_a = nn.Sequential(
             ForceZero(),
-            conv3x3(N, N),
-            nn.LeakyReLU(inplace=True),
-            conv3x3(N, N),
-            nn.LeakyReLU(inplace=True),
             conv3x3(N, N, stride=2),
-            nn.LeakyReLU(inplace=True),
-            conv3x3(N, N),
-            nn.LeakyReLU(inplace=True),
             conv3x3(N, N, stride=2),
             ForceZero(),
         )
 
         self.h_s = nn.Sequential(
             ForceZero(),
-            conv3x3(N, N),
-            nn.LeakyReLU(inplace=True),
             subpel_conv3x3(N, N, 2),
-            nn.LeakyReLU(inplace=True),
             conv3x3(N, N * 3 // 2),
-            nn.LeakyReLU(inplace=True),
             subpel_conv3x3(N * 3 // 2, N * 3 // 2, 2),
-            nn.LeakyReLU(inplace=True),
             conv3x3(N * 3 // 2, N * 2),
             ForceZero(),
         )
