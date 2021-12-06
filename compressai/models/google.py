@@ -45,7 +45,7 @@ class CompressionModel(nn.Module):
 
     def __init__(self, entropy_bottleneck_channels, init_weights=None):
         super().__init__()
-        self.entropy_bottleneck = EntropyBottleneck(entropy_bottleneck_channels)
+        # self.entropy_bottleneck = EntropyBottleneck(entropy_bottleneck_channels)
 
         if init_weights is not None:
             warnings.warn(
@@ -88,12 +88,12 @@ class CompressionModel(nn.Module):
 
     def load_state_dict(self, state_dict):
         # Dynamically update the entropy bottleneck buffers related to the CDFs
-        update_registered_buffers(
-            self.entropy_bottleneck,
-            "entropy_bottleneck",
-            ["_quantized_cdf", "_offset", "_cdf_length"],
-            state_dict,
-        )
+        # update_registered_buffers(
+        #     self.entropy_bottleneck,
+        #     "entropy_bottleneck",
+        #     ["_quantized_cdf", "_offset", "_cdf_length"],
+        #     state_dict,
+        # )
         super().load_state_dict(state_dict, strict=False)
 
 

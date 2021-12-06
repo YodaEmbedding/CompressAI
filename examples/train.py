@@ -105,15 +105,11 @@ def configure_optimizers(net, args):
         (params_dict[n] for n in sorted(parameters)),
         lr=args.learning_rate,
     )
-    aux_optimizer = optim.Adam(
-        (params_dict[n] for n in sorted(aux_parameters)),
-        lr=args.aux_learning_rate,
-    )
-    return optimizer, aux_optimizer
+    return optimizer
 
 
 def train_one_epoch(
-    model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, clip_max_norm
+    model, criterion, train_dataloader, optimizer, epoch, clip_max_norm
 ):
     model.train()
     device = next(model.parameters()).device
@@ -122,7 +118,6 @@ def train_one_epoch(
         d = d.to(device)
 
         optimizer.zero_grad()
-        aux_optimizer.zero_grad()
 
         out_net = model(d)
 
@@ -132,10 +127,6 @@ def train_one_epoch(
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
         optimizer.step()
 
-        aux_loss = model.aux_loss()
-        aux_loss.backward()
-        aux_optimizer.step()
-
         if i % 10 == 0:
             print(
                 f"Train epoch {epoch}: ["
@@ -144,7 +135,6 @@ def train_one_epoch(
                 f'\tLoss: {out_criterion["loss"].item():.3f} |'
                 f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
                 f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
             )
 
 
@@ -155,7 +145,6 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     loss = AverageMeter()
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
-    aux_loss = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -163,7 +152,6 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             out_net = model(d)
             out_criterion = criterion(out_net, d)
 
-            aux_loss.update(model.aux_loss())
             bpp_loss.update(out_criterion["bpp_loss"])
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
@@ -172,8 +160,7 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"Test epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
         f"\tMSE loss: {mse_loss.avg:.3f} |"
-        f"\tBpp loss: {bpp_loss.avg:.2f} |"
-        f"\tAux loss: {aux_loss.avg:.2f}\n"
+        f"\tBpp loss: {bpp_loss.avg:.2f}\n"
     )
 
     return loss.avg
@@ -307,7 +294,7 @@ def main(argv):
     if args.cuda and torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
 
-    optimizer, aux_optimizer = configure_optimizers(net, args)
+    optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     criterion = RateDistortionLoss(lmbda=args.lmbda)
 
@@ -318,7 +305,6 @@ def main(argv):
         last_epoch = checkpoint["epoch"] + 1
         net.load_state_dict(checkpoint["state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
     best_loss = float("inf")
@@ -329,7 +315,6 @@ def main(argv):
             criterion,
             train_dataloader,
             optimizer,
-            aux_optimizer,
             epoch,
             args.clip_max_norm,
         )
@@ -346,7 +331,6 @@ def main(argv):
                     "state_dict": net.state_dict(),
                     "loss": loss,
                     "optimizer": optimizer.state_dict(),
-                    "aux_optimizer": aux_optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
                 },
                 is_best,
