@@ -255,6 +255,12 @@ def parse_args(argv):
 def main(argv):
     args = parse_args(argv)
 
+    print(args._get_kwargs())
+    print("\n".join(f"{k}={repr(v)}" for k, v in args._get_kwargs()))
+    print(torch.__version__)
+    print(torch.cuda.is_available())
+    print(torch.cuda.device_count())
+
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
