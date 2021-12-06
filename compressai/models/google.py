@@ -446,7 +446,12 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
 
     def forward(self, x):
         y = self.g_a(x)
-        params = torch.zeros_like(y)
+        params_shape = list(y.shape)
+        params_shape[1] *= 2
+        params_shape = tuple(params_shape)
+        params = torch.zeros(
+            params_shape, dtype=y.dtype, layout=y.layout, device=y.device
+        )
 
         y_hat = self.gaussian_conditional.quantize(
             y, "noise" if self.training else "dequantize"
@@ -481,7 +486,12 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
             )
 
         y = self.g_a(x)
-        params = torch.zeros_like(y)
+        params_shape = list(y.shape)
+        params_shape[1] *= 2
+        params_shape = tuple(params_shape)
+        params = torch.zeros(
+            params_shape, dtype=y.dtype, layout=y.layout, device=y.device
+        )
 
         s = 4  # scaling factor between z and y
         kernel_size = 5  # context prediction kernel size
