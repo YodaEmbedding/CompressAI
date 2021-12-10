@@ -574,7 +574,10 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         # FIXME: we don't respect the default entropy coder and directly call the
         # range ANS decoder
 
-        params = torch.zeros(shape, dtype=torch.float32, device=device)
+        params_shape = list(shape)
+        params_shape[1] *= 2
+        params_shape = tuple(params_shape)
+        params = torch.zeros(params_shape, dtype=torch.float32, device=device)
 
         s = 4  # scaling factor between z and y
         kernel_size = 5  # context prediction kernel size
