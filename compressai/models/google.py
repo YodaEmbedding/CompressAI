@@ -94,7 +94,7 @@ class CompressionModel(nn.Module):
             ["_quantized_cdf", "_offset", "_cdf_length"],
             state_dict,
         )
-        super().load_state_dict(state_dict)
+        super().load_state_dict(state_dict, strict=False)
 
 
 class FactorizedPrior(CompressionModel):
