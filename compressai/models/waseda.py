@@ -74,7 +74,6 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
             subpel_conv3x3(N, N, 2),
             conv3x3(N, N * 3 // 2),
             subpel_conv3x3(N * 3 // 2, N * 3 // 2, 2),
-            conv3x3(N * 3 // 2, N * 2),
             ForceZero(),
         )
 
