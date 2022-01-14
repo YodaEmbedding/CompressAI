@@ -93,6 +93,9 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
         """Return a new model instance from `state_dict`."""
         N = state_dict["g_a.0.conv1.weight"].size(0)
         net = cls(N)
+        for key in state_dict:
+            if key.startswith("h_"):
+                state_dict[key] = torch.zeros_like(state_dict[key])
         net.load_state_dict(state_dict)
         return net
 
