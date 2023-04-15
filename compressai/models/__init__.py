@@ -29,4 +29,5 @@
 
 from .base import *
 from .google import *
+from .google_latent_codec import *
 from .waseda import *
