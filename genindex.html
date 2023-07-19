@@ -18,12 +18,12 @@
   </script>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="_static/styles/theme.css?digest=12da95d707ffb74b382d" rel="stylesheet" />
-<link href="_static/styles/bootstrap.css?digest=12da95d707ffb74b382d" rel="stylesheet" />
-<link href="_static/styles/pydata-sphinx-theme.css?digest=12da95d707ffb74b382d" rel="stylesheet" />
+  <link href="_static/styles/theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=e353d410970836974a52" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=e353d410970836974a52" rel="stylesheet" />
 
   
-  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=12da95d707ffb74b382d" rel="stylesheet" />
+  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=e353d410970836974a52" rel="stylesheet" />
   <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2" />
 <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2" />
 <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
@@ -32,8 +32,8 @@
     <link rel="stylesheet" href="_static/styles/sphinx-book-theme.css?digest=14f4ca6b54d191a8c7657f6c759bf11a5fb86285" type="text/css" />
   
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=12da95d707ffb74b382d" />
-<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=12da95d707ffb74b382d" />
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=e353d410970836974a52" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52" />
 
     <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
     <script src="_static/doctools.js"></script>
@@ -139,6 +139,7 @@
 <li class="toctree-l1"><a class="reference internal" href="ans.html">compressai.ans</a></li>
 <li class="toctree-l1"><a class="reference internal" href="datasets.html">compressai.datasets</a></li>
 <li class="toctree-l1"><a class="reference internal" href="entropy_models.html">compressai.entropy_models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="latent_codecs.html">compressai.latent_codecs</a></li>
 <li class="toctree-l1"><a class="reference internal" href="layers.html">compressai.layers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="models.html">compressai.models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ops.html">compressai.ops</a></li>
@@ -265,6 +266,7 @@ document.write(`
  | <a href="#E"><strong>E</strong></a>
  | <a href="#F"><strong>F</strong></a>
  | <a href="#G"><strong>G</strong></a>
+ | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#J"><strong>J</strong></a>
  | <a href="#L"><strong>L</strong></a>
@@ -275,7 +277,6 @@ document.write(`
  | <a href="#S"><strong>S</strong></a>
  | <a href="#U"><strong>U</strong></a>
  | <a href="#V"><strong>V</strong></a>
- | <a href="#W"><strong>W</strong></a>
  | <a href="#Y"><strong>Y</strong></a>
  
 </div>
@@ -284,14 +285,10 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="layers.html#compressai.layers.AttentionBlock">AttentionBlock (class in compressai.layers)</a>
 </li>
-      <li><a href="models.html#compressai.models.CompressionModel.aux_loss">aux_loss() (compressai.models.CompressionModel method)</a>
-
-      <ul>
-        <li><a href="models.html#compressai.models.video.ScaleSpaceFlow.aux_loss">(compressai.models.video.ScaleSpaceFlow method)</a>
-</li>
-      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#compressai.models.CompressionModel.aux_loss">aux_loss() (compressai.models.CompressionModel method)</a>
+</li>
       <li><a href="compressai.html#compressai.available_entropy_coders">available_entropy_coders() (in module compressai)</a>
 </li>
   </ul></td>
@@ -349,6 +346,10 @@ document.write(`
       <li><a href="entropy_models.html#compressai.entropy_models.EntropyBottleneck">EntropyBottleneck (class in compressai.entropy_models)</a>
 </li>
   </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.EntropyBottleneckLatentCodec">EntropyBottleneckLatentCodec (class in compressai.latent_codecs)</a>
+</li>
+  </ul></td>
 </tr></table>
 
 <h2 id="F">F</h2>
@@ -356,49 +357,39 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="models.html#compressai.models.FactorizedPrior">FactorizedPrior (class in compressai.models)</a>
 </li>
-      <li><a href="models.html#compressai.models.FactorizedPrior.forward">forward() (compressai.models.FactorizedPrior method)</a>
-
-      <ul>
-        <li><a href="models.html#compressai.models.JointAutoregressiveHierarchicalPriors.forward">(compressai.models.JointAutoregressiveHierarchicalPriors method)</a>
-</li>
-        <li><a href="models.html#compressai.models.MeanScaleHyperprior.forward">(compressai.models.MeanScaleHyperprior method)</a>
-</li>
-        <li><a href="models.html#compressai.models.ScaleHyperprior.forward">(compressai.models.ScaleHyperprior method)</a>
-</li>
-        <li><a href="models.html#compressai.models.video.ScaleSpaceFlow.forward">(compressai.models.video.ScaleSpaceFlow method)</a>
-</li>
-      </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#compressai.models.Cheng2020Anchor.from_state_dict">from_state_dict() (compressai.models.Cheng2020Anchor class method)</a>
-
-      <ul>
-        <li><a href="models.html#compressai.models.FactorizedPrior.from_state_dict">(compressai.models.FactorizedPrior class method)</a>
-</li>
-        <li><a href="models.html#compressai.models.JointAutoregressiveHierarchicalPriors.from_state_dict">(compressai.models.JointAutoregressiveHierarchicalPriors class method)</a>
-</li>
-        <li><a href="models.html#compressai.models.ScaleHyperprior.from_state_dict">(compressai.models.ScaleHyperprior class method)</a>
-</li>
-        <li><a href="models.html#compressai.models.video.ScaleSpaceFlow.from_state_dict">(compressai.models.video.ScaleSpaceFlow class method)</a>
-</li>
-      </ul></li>
   </ul></td>
 </tr></table>
 
 <h2 id="G">G</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#compressai.models.video.ScaleSpaceFlow.gaussian_volume">gaussian_volume() (compressai.models.video.ScaleSpaceFlow static method)</a>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.GainHyperLatentCodec">GainHyperLatentCodec (class in compressai.latent_codecs)</a>
+</li>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.GainHyperpriorLatentCodec">GainHyperpriorLatentCodec (class in compressai.latent_codecs)</a>
 </li>
       <li><a href="entropy_models.html#compressai.entropy_models.GaussianConditional">GaussianConditional (class in compressai.entropy_models)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.GaussianConditionalLatentCodec">GaussianConditionalLatentCodec (class in compressai.latent_codecs)</a>
+</li>
       <li><a href="layers.html#compressai.layers.GDN">GDN (class in compressai.layers)</a>
 </li>
       <li><a href="layers.html#compressai.layers.GDN1">GDN1 (class in compressai.layers)</a>
 </li>
       <li><a href="compressai.html#compressai.get_entropy_coder">get_entropy_coder() (in module compressai)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="H">H</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.HyperLatentCodec">HyperLatentCodec (class in compressai.latent_codecs)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.HyperpriorLatentCodec">HyperpriorLatentCodec (class in compressai.latent_codecs)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -483,6 +474,8 @@ document.write(`
 </li>
       <li><a href="ans.html#compressai.ans.RansEncoder">RansEncoder (class in compressai.ans)</a>
 </li>
+      <li><a href="latent_codecs.html#compressai.latent_codecs.RasterScanLatentCodec">RasterScanLatentCodec (class in compressai.latent_codecs)</a>
+</li>
       <li><a href="layers.html#compressai.layers.ResidualBlock">ResidualBlock (class in compressai.layers)</a>
 </li>
   </ul></td>
@@ -509,6 +502,8 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="compressai.html#compressai.set_entropy_coder">set_entropy_coder() (in module compressai)</a>
 </li>
+      <li><a href="models.html#compressai.models.SimpleVAECompressionModel">SimpleVAECompressionModel (class in compressai.models)</a>
+</li>
       <li><a href="zoo.html#compressai.zoo.ssf2020">ssf2020() (in module compressai.zoo)</a>
 </li>
   </ul></td>
@@ -526,14 +521,6 @@ document.write(`
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="datasets.html#compressai.datasets.VideoFolder">VideoFolder (class in compressai.datasets)</a>
-</li>
-  </ul></td>
-</tr></table>
-
-<h2 id="W">W</h2>
-<table style="width: 100%" class="indextable genindextable"><tr>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#compressai.models.video.ScaleSpaceFlow.warp_volume">warp_volume() (compressai.models.video.ScaleSpaceFlow method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -566,9 +553,15 @@ document.write(`
               
               
                 <footer class="bd-footer-article">
-                  <!-- Previous / next buttons -->
+                  
+<div class="footer-article-items footer-article__inner">
+  
+    <div class="footer-article-item"><!-- Previous / next buttons -->
 <div class="prev-next-area">
+</div></div>
+  
 </div>
+
                 </footer>
               
             </div>
@@ -578,7 +571,7 @@ document.write(`
             
           </div>
           <footer class="bd-footer-content">
-            <div class="bd-footer-content__inner">
+            
 <div class="bd-footer-content__inner container">
   
   <div class="footer-item">
@@ -608,7 +601,7 @@ By InterDigital Communications, Inc.
     
   </div>
   
-</div></div>
+</div>
           </footer>
         
 
@@ -617,8 +610,8 @@ By InterDigital Communications, Inc.
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="_static/scripts/bootstrap.js?digest=12da95d707ffb74b382d"></script>
-<script src="_static/scripts/pydata-sphinx-theme.js?digest=12da95d707ffb74b382d"></script>
+  <script src="_static/scripts/bootstrap.js?digest=e353d410970836974a52"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52"></script>
 
   <footer class="bd-footer">
   </footer>
