@@ -100,7 +100,14 @@ class Quantizer:
 
 @register_model("cheng2020-anchor-elic-chandelier")
 class TestModel(CompressionModel):
-    def __init__(self, N=192, M=320, num_slices=5, **kwargs):
+    def __init__(
+        self,
+        N=192,
+        M=320,
+        num_slices=5,
+        groups=[0, 16, 16, 32, 64, 192],
+        **kwargs,
+    ):
         super().__init__()
         self.N = int(N)
         self.M = int(M)
@@ -110,7 +117,7 @@ class TestModel(CompressionModel):
              N: channel number of main network
              M: channnel number of latent space
         """
-        self.groups = [0, 16, 16, 32, 64, 192]  # support depth
+        self.groups = groups
         self.g_a = nn.Sequential(
             conv(3, N),
             ResidualBottleneckBlock(N),
