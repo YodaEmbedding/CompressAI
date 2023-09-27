@@ -270,15 +270,17 @@ class TestModel(CompressionModel):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
-            ### checkboard process 1
+
             y_anchor = anchor_split[slice_index]
+            y_non_anchor = non_anchor_split[slice_index]
+            scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
+            means_hat_split = torch.zeros_like(y_anchor).to(x.device)
+
+            ### checkboard process 1
             params = self.ParamAggregation[slice_index](
                 torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
             )
             means_anchor, scales_anchor = params.chunk(2, 1)
-
-            scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
-            means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
             scales_hat_split[:, :, 0::2, 0::2] = scales_anchor[:, :, 0::2, 0::2]
             scales_hat_split[:, :, 1::2, 1::2] = scales_anchor[:, :, 1::2, 1::2]
@@ -305,12 +307,6 @@ class TestModel(CompressionModel):
             scales_hat_split[:, :, 1::2, 0::2] = scales_non_anchor[:, :, 1::2, 0::2]
             means_hat_split[:, :, 0::2, 1::2] = means_non_anchor[:, :, 0::2, 1::2]
             means_hat_split[:, :, 1::2, 0::2] = means_non_anchor[:, :, 1::2, 0::2]
-            # entropy estimation
-            _, y_slice_likelihood = self.gaussian_conditional(
-                y_slice, scales_hat_split, means=means_hat_split
-            )
-
-            y_non_anchor = non_anchor_split[slice_index]
 
             (
                 y_non_anchor_quantilized,
@@ -329,6 +325,11 @@ class TestModel(CompressionModel):
             y_hat_slices.append(y_hat_slice)
             ### ste for synthesis model
             y_hat_slices_for_gs.append(y_hat_slice_for_gs)
+
+            # entropy estimation
+            _, y_slice_likelihood = self.gaussian_conditional(
+                y_slice, scales_hat_split, means=means_hat_split
+            )
             y_likelihood.append(y_slice_likelihood)
 
         y_likelihoods = torch.cat(y_likelihood, dim=1)
