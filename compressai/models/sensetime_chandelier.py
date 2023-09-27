@@ -194,13 +194,13 @@ class TestModel(CompressionModel):
         self.ParamAggregation = nn.ModuleList(
             nn.Sequential(
                 conv1x1(
-                    640
+                    M * 2
                     + self.groups[i + 1 if i > 0 else 0] * 2
                     + self.groups[i + 1] * 2,
-                    640,
+                    M * 2,
                 ),
                 nn.ReLU(inplace=True),
-                conv1x1(640, 512),
+                conv1x1(M * 2, 512),
                 nn.ReLU(inplace=True),
                 conv1x1(512, self.groups[i + 1] * 2),
             )
