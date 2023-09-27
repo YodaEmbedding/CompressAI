@@ -585,9 +585,14 @@ class TestModel(CompressionModel):
 
             y_strings.append([anchor_strings, non_anchor_strings])
 
+        # Flatten for interface compatibility:
+        # strings = [y_strings, z_strings]
+        y_strings_flat = [x for xs in y_strings for x in xs]
+        strings = [*y_strings_flat, z_strings]
+
         params_time = time.time() - params_start
         return {
-            "strings": [y_strings, z_strings],
+            "strings": strings,
             "shape": z.size()[-2:],
             "time": {
                 "y_enc": y_enc,
@@ -598,6 +603,14 @@ class TestModel(CompressionModel):
         }
 
     def decompress(self, strings, shape, **kwargs):
+        # Interface compatibility (strings should be list[list[str]]):
+        assert isinstance(strings, list)
+        [*y_strings_flat, z_strings] = strings
+        y_strings = [
+            y_strings_flat[i : i + 2] for i in range(0, len(y_strings_flat), 2)
+        ]
+        strings = [y_strings, z_strings]
+
         assert isinstance(strings, list) and len(strings) == 2
 
         # FIXME: we don't respect the default entropy coder and directly call thse
