@@ -406,19 +406,12 @@ class TestModel(CompressionModel):
             means_anchor, scales_anchor = params.chunk(2, 1)
 
             B_anchor, C_anchor, H_anchor, W_anchor = y_anchor.size()
-
-            y_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
-            means_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
-            scales_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
-            y_anchor_decode = torch.zeros(B_anchor, C_anchor, H_anchor, W_anchor).to(
-                x.device
-            )
+            encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
+            decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
+            y_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            means_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            scales_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            y_anchor_decode = torch.zeros(decode_shape).to(x.device)
 
             y_anchor_encode[:, :, 0::2, :] = y_anchor[:, :, 0::2, 0::2]
             y_anchor_encode[:, :, 1::2, :] = y_anchor[:, :, 1::2, 1::2]
@@ -446,15 +439,9 @@ class TestModel(CompressionModel):
             )
             means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            y_non_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
-            means_non_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
-            scales_non_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(x.device)
+            y_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            means_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            scales_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
 
             non_anchor = y_slices[slice_index].clone()
             y_non_anchor_encode[:, :, 0::2, :] = non_anchor[:, :, 0::2, 1::2]
@@ -550,16 +537,11 @@ class TestModel(CompressionModel):
             means_anchor, scales_anchor = params.chunk(2, 1)
 
             B_anchor, C_anchor, H_anchor, W_anchor = means_anchor.size()
-
-            means_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(z_hat.device)
-            scales_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(z_hat.device)
-            y_anchor_decode = torch.zeros(B_anchor, C_anchor, H_anchor, W_anchor).to(
-                z_hat.device
-            )
+            encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
+            decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
+            means_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
+            scales_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
+            y_anchor_decode = torch.zeros(decode_shape).to(z_hat.device)
 
             means_anchor_encode[:, :, 0::2, :] = means_anchor[:, :, 0::2, 0::2]
             means_anchor_encode[:, :, 1::2, :] = means_anchor[:, :, 1::2, 1::2]
@@ -584,12 +566,8 @@ class TestModel(CompressionModel):
             )
             means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            means_non_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(z_hat.device)
-            scales_non_anchor_encode = torch.zeros(
-                B_anchor, C_anchor, H_anchor, W_anchor // 2
-            ).to(z_hat.device)
+            means_non_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
+            scales_non_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
 
             means_non_anchor_encode[:, :, 0::2, :] = means_non_anchor[:, :, 0::2, 1::2]
             means_non_anchor_encode[:, :, 1::2, :] = means_non_anchor[:, :, 1::2, 0::2]
