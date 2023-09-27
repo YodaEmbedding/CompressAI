@@ -30,4 +30,5 @@
 from .base import *
 from .google import *
 from .sensetime import *
+from .sensetime_chandelier import *
 from .waseda import *
