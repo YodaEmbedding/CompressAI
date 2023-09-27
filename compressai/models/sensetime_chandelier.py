@@ -369,6 +369,8 @@ class TestModel(CompressionModel):
     def compress(self, x):
         import time
 
+        device = x.device
+
         y_enc_start = time.time()
         y = self.g_a(x)
         y_enc = time.time() - y_enc_start
@@ -408,17 +410,18 @@ class TestModel(CompressionModel):
             B_anchor, C_anchor, H_anchor, W_anchor = y_anchor.size()
             encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
             decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
-            y_anchor_encode = torch.zeros(encode_shape).to(x.device)
-            means_anchor_encode = torch.zeros(encode_shape).to(x.device)
-            scales_anchor_encode = torch.zeros(encode_shape).to(x.device)
-            y_anchor_decode = torch.zeros(decode_shape).to(x.device)
+            means_anchor_encode = torch.zeros(encode_shape).to(device)
+            scales_anchor_encode = torch.zeros(encode_shape).to(device)
+            y_anchor_decode = torch.zeros(decode_shape).to(device)
 
-            y_anchor_encode[:, :, 0::2, :] = y_anchor[:, :, 0::2, 0::2]
-            y_anchor_encode[:, :, 1::2, :] = y_anchor[:, :, 1::2, 1::2]
             means_anchor_encode[:, :, 0::2, :] = means_anchor[:, :, 0::2, 0::2]
             means_anchor_encode[:, :, 1::2, :] = means_anchor[:, :, 1::2, 1::2]
             scales_anchor_encode[:, :, 0::2, :] = scales_anchor[:, :, 0::2, 0::2]
             scales_anchor_encode[:, :, 1::2, :] = scales_anchor[:, :, 1::2, 1::2]
+
+            y_anchor_encode = torch.zeros(encode_shape).to(device)
+            y_anchor_encode[:, :, 0::2, :] = y_anchor[:, :, 0::2, 0::2]
+            y_anchor_encode[:, :, 1::2, :] = y_anchor[:, :, 1::2, 1::2]
 
             indexes_anchor = self.gaussian_conditional.build_indexes(
                 scales_anchor_encode
@@ -439,9 +442,9 @@ class TestModel(CompressionModel):
             )
             means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            y_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
-            means_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
-            scales_non_anchor_encode = torch.zeros(encode_shape).to(x.device)
+            y_non_anchor_encode = torch.zeros(encode_shape).to(device)
+            means_non_anchor_encode = torch.zeros(encode_shape).to(device)
+            scales_non_anchor_encode = torch.zeros(encode_shape).to(device)
 
             non_anchor = y_slices[slice_index].clone()
             y_non_anchor_encode[:, :, 0::2, :] = non_anchor[:, :, 0::2, 1::2]
@@ -515,12 +518,14 @@ class TestModel(CompressionModel):
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
+        device = z_hat.device
+
         y_shape = [z_hat.shape[2] * 4, z_hat.shape[3] * 4]
         y_strings = strings[0]
 
         ctx_params_anchor = torch.zeros(
             (B, self.M * 2, z_hat.shape[2] * 4, z_hat.shape[3] * 4)
-        ).to(z_hat.device)
+        ).to(device)
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], 1
         )
@@ -539,9 +544,9 @@ class TestModel(CompressionModel):
             B_anchor, C_anchor, H_anchor, W_anchor = means_anchor.size()
             encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
             decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
-            means_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
-            scales_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
-            y_anchor_decode = torch.zeros(decode_shape).to(z_hat.device)
+            means_anchor_encode = torch.zeros(encode_shape).to(device)
+            scales_anchor_encode = torch.zeros(encode_shape).to(device)
+            y_anchor_decode = torch.zeros(decode_shape).to(device)
 
             means_anchor_encode[:, :, 0::2, :] = means_anchor[:, :, 0::2, 0::2]
             means_anchor_encode[:, :, 1::2, :] = means_anchor[:, :, 1::2, 1::2]
@@ -566,8 +571,8 @@ class TestModel(CompressionModel):
             )
             means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            means_non_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
-            scales_non_anchor_encode = torch.zeros(encode_shape).to(z_hat.device)
+            means_non_anchor_encode = torch.zeros(encode_shape).to(device)
+            scales_non_anchor_encode = torch.zeros(encode_shape).to(device)
 
             means_non_anchor_encode[:, :, 0::2, :] = means_non_anchor[:, :, 0::2, 1::2]
             means_non_anchor_encode[:, :, 1::2, :] = means_non_anchor[:, :, 1::2, 0::2]
