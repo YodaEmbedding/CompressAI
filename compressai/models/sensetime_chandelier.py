@@ -240,7 +240,7 @@ class TestModel(CompressionModel):
 
     def forward(self, x, noisequant=False):
         y = self.g_a(x)
-        B, C, H, W = y.size()  ## The shape of y to generate the mask
+        B, C, H, W = y.shape
 
         z = self.h_a(y)
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
@@ -251,26 +251,21 @@ class TestModel(CompressionModel):
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        anchor = torch.zeros_like(y).to(x.device)
-        non_anchor = torch.zeros_like(y).to(x.device)
-
-        anchor[:, :, 0::2, 0::2] = y[:, :, 0::2, 0::2]
-        anchor[:, :, 1::2, 1::2] = y[:, :, 1::2, 1::2]
-        non_anchor[:, :, 0::2, 1::2] = y[:, :, 0::2, 1::2]
-        non_anchor[:, :, 1::2, 0::2] = y[:, :, 1::2, 0::2]
-
-        y_slices = torch.split(y, self.groups[1:], 1)
+        anchor, non_anchor = self._unembed(y)
 
         anchor_split = torch.split(anchor, self.groups[1:], 1)
         non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+
+        y_slices = torch.split(y, self.groups[1:], 1)
         ctx_params_anchor_split = torch.split(
             torch.zeros(B, C * 2, H, W).to(x.device),
             [2 * i for i in self.groups[1:]],
             1,
         )
+
+        y_likelihood = []
         y_hat_slices = []
         y_hat_slices_for_gs = []
-        y_likelihood = []
         for slice_index, y_slice in enumerate(y_slices):
             if slice_index == 0:
                 support_slices = []
@@ -306,12 +301,10 @@ class TestModel(CompressionModel):
             )
             ### checkboard process 1
             y_anchor = anchor_split[slice_index]
-            (
-                means_anchor,
-                scales_anchor,
-            ) = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_anchor, scales_anchor = params.chunk(2, 1)
 
             scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
             means_hat_split = torch.zeros_like(y_anchor).to(x.device)
@@ -320,18 +313,10 @@ class TestModel(CompressionModel):
             scales_hat_split[:, :, 1::2, 1::2] = scales_anchor[:, :, 1::2, 1::2]
             means_hat_split[:, :, 0::2, 0::2] = means_anchor[:, :, 0::2, 0::2]
             means_hat_split[:, :, 1::2, 1::2] = means_anchor[:, :, 1::2, 1::2]
-            if noisequant:
-                y_anchor_quantilized = self.quantizer.quantize(y_anchor, "noise")
-                y_anchor_quantilized_for_gs = self.quantizer.quantize(y_anchor, "ste")
-            else:
-                y_anchor_quantilized = (
-                    self.quantizer.quantize(y_anchor - means_anchor, "ste")
-                    + means_anchor
-                )
-                y_anchor_quantilized_for_gs = (
-                    self.quantizer.quantize(y_anchor - means_anchor, "ste")
-                    + means_anchor
-                )
+
+            y_anchor_quantilized, y_anchor_quantilized_for_gs = self._apply_quantizer(
+                y_anchor, means_anchor, noisequant
+            )
 
             y_anchor_quantilized[:, :, 0::2, 1::2] = 0
             y_anchor_quantilized[:, :, 1::2, 0::2] = 0
@@ -340,9 +325,10 @@ class TestModel(CompressionModel):
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_quantilized)
-            means_non_anchor, scales_non_anchor = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([masked_context, support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
             scales_hat_split[:, :, 0::2, 1::2] = scales_non_anchor[:, :, 0::2, 1::2]
             scales_hat_split[:, :, 1::2, 0::2] = scales_non_anchor[:, :, 1::2, 0::2]
@@ -354,22 +340,11 @@ class TestModel(CompressionModel):
             )
 
             y_non_anchor = non_anchor_split[slice_index]
-            if noisequant:
-                y_non_anchor_quantilized = self.quantizer.quantize(
-                    y_non_anchor, "noise"
-                )
-                y_non_anchor_quantilized_for_gs = self.quantizer.quantize(
-                    y_non_anchor, "ste"
-                )
-            else:
-                y_non_anchor_quantilized = (
-                    self.quantizer.quantize(y_non_anchor - means_non_anchor, "ste")
-                    + means_non_anchor
-                )
-                y_non_anchor_quantilized_for_gs = (
-                    self.quantizer.quantize(y_non_anchor - means_non_anchor, "ste")
-                    + means_non_anchor
-                )
+
+            (
+                y_non_anchor_quantilized,
+                y_non_anchor_quantilized_for_gs,
+            ) = self._apply_quantizer(y_non_anchor, means_non_anchor, noisequant)
 
             y_non_anchor_quantilized[:, :, 0::2, 0::2] = 0
             y_non_anchor_quantilized[:, :, 1::2, 1::2] = 0
@@ -439,7 +414,6 @@ class TestModel(CompressionModel):
         z_dec = time.time() - z_dec_start
 
         y_slices = torch.split(y, self.groups[1:], 1)
-
         ctx_params_anchor_split = torch.split(
             torch.zeros(B, C * 2, H, W).to(x.device),
             [2 * i for i in self.groups[1:]],
@@ -485,12 +459,10 @@ class TestModel(CompressionModel):
             )
             ### checkboard process 1
             y_anchor = y_slices[slice_index].clone()
-            (
-                means_anchor,
-                scales_anchor,
-            ) = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_anchor, scales_anchor = params.chunk(2, 1)
 
             B_anchor, C_anchor, H_anchor, W_anchor = y_anchor.size()
 
@@ -528,9 +500,10 @@ class TestModel(CompressionModel):
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_decode)
-            means_non_anchor, scales_non_anchor = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([masked_context, support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
             y_non_anchor_encode = torch.zeros(
                 B_anchor, C_anchor, H_anchor, W_anchor // 2
@@ -660,12 +633,10 @@ class TestModel(CompressionModel):
                 )
             )
             ### checkboard process 1
-            (
-                means_anchor,
-                scales_anchor,
-            ) = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_anchor, scales_anchor = params.chunk(2, 1)
 
             B_anchor, C_anchor, H_anchor, W_anchor = means_anchor.size()
 
@@ -697,9 +668,10 @@ class TestModel(CompressionModel):
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_decode)
-            means_non_anchor, scales_non_anchor = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([masked_context, support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
             means_non_anchor_encode = torch.zeros(
                 B_anchor, C_anchor, H_anchor, W_anchor // 2
@@ -765,25 +737,20 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        anchor = torch.zeros_like(y).to(x.device)
-        non_anchor = torch.zeros_like(y).to(x.device)
-
-        anchor[:, :, 0::2, 0::2] = y[:, :, 0::2, 0::2]
-        anchor[:, :, 1::2, 1::2] = y[:, :, 1::2, 1::2]
-        non_anchor[:, :, 0::2, 1::2] = y[:, :, 0::2, 1::2]
-        non_anchor[:, :, 1::2, 0::2] = y[:, :, 1::2, 0::2]
-
-        y_slices = torch.split(y, self.groups[1:], 1)
+        anchor, non_anchor = self._unembed(y)
 
         anchor_split = torch.split(anchor, self.groups[1:], 1)
         non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+
+        y_slices = torch.split(y, self.groups[1:], 1)
         ctx_params_anchor_split = torch.split(
             torch.zeros(B, C * 2, H, W).to(x.device),
             [2 * i for i in self.groups[1:]],
             1,
         )
-        y_hat_slices = []
+
         y_likelihood = []
+        y_hat_slices = []
         params_start = time.time()
         for slice_index, y_slice in enumerate(y_slices):
             if slice_index == 0:
@@ -821,12 +788,10 @@ class TestModel(CompressionModel):
             )
             ### checkboard process 1
             y_anchor = anchor_split[slice_index]
-            (
-                means_anchor,
-                scales_anchor,
-            ) = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_anchor, scales_anchor = params.chunk(2, 1)
 
             scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
             means_hat_split = torch.zeros_like(y_anchor).to(x.device)
@@ -847,9 +812,10 @@ class TestModel(CompressionModel):
             masked_context = self.context_prediction[slice_index](
                 y_anchor_quantilized_for_gs
             )
-            means_non_anchor, scales_non_anchor = self.ParamAggregation[slice_index](
+            params = self.ParamAggregation[slice_index](
                 torch.concat([masked_context, support], dim=1)
-            ).chunk(2, 1)
+            )
+            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
             scales_hat_split[:, :, 0::2, 1::2] = scales_non_anchor[:, :, 0::2, 1::2]
             scales_hat_split[:, :, 1::2, 0::2] = scales_non_anchor[:, :, 1::2, 0::2]
@@ -894,3 +860,21 @@ class TestModel(CompressionModel):
                 "params": params_time,
             },
         }
+
+    def _apply_quantizer(self, y, means, noisequant):
+        if noisequant:
+            quantized = self.quantizer.quantize(y, "noise")
+            quantized_for_g_s = self.quantizer.quantize(y, "ste")
+        else:
+            quantized = self.quantizer.quantize(y - means, "ste") + means
+            quantized_for_g_s = self.quantizer.quantize(y - means, "ste") + means
+        return quantized, quantized_for_g_s
+
+    def _unembed(self, y):
+        anchor = torch.zeros_like(y).to(y.device)
+        non_anchor = torch.zeros_like(y).to(y.device)
+        anchor[:, :, 0::2, 0::2] = y[:, :, 0::2, 0::2]
+        anchor[:, :, 1::2, 1::2] = y[:, :, 1::2, 1::2]
+        non_anchor[:, :, 0::2, 1::2] = y[:, :, 0::2, 1::2]
+        non_anchor[:, :, 1::2, 0::2] = y[:, :, 1::2, 0::2]
+        return anchor, non_anchor
