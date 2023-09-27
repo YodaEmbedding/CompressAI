@@ -436,25 +436,18 @@ class TestModel(CompressionModel):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
+
             ### checkboard process 1
-            y_anchor = y_slices[slice_index].clone()
-            params = self.ParamAggregation[slice_index](
-                torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
+            (
+                means_anchor_encode,
+                scales_anchor_encode,
+                encode_shape,
+                decode_shape,
+            ) = self._checkerboard_anchor_compress(
+                slice_index, support, ctx_params_anchor_split[slice_index], device
             )
-            means_anchor, scales_anchor = params.chunk(2, 1)
 
-            B_anchor, C_anchor, H_anchor, W_anchor = y_anchor.size()
-            encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
-            decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
-            means_anchor_encode = torch.zeros(encode_shape).to(device)
-            scales_anchor_encode = torch.zeros(encode_shape).to(device)
-            y_anchor_decode = torch.zeros(decode_shape).to(device)
-
-            means_anchor_encode[:, :, 0::2, :] = means_anchor[:, :, 0::2, 0::2]
-            means_anchor_encode[:, :, 1::2, :] = means_anchor[:, :, 1::2, 1::2]
-            scales_anchor_encode[:, :, 0::2, :] = scales_anchor[:, :, 0::2, 0::2]
-            scales_anchor_encode[:, :, 1::2, :] = scales_anchor[:, :, 1::2, 1::2]
-
+            y_anchor = y_slices[slice_index].clone()
             y_anchor_encode = torch.zeros(encode_shape).to(device)
             y_anchor_encode[:, :, 0::2, :] = y_anchor[:, :, 0::2, 0::2]
             y_anchor_encode[:, :, 1::2, :] = y_anchor[:, :, 1::2, 1::2]
@@ -468,31 +461,25 @@ class TestModel(CompressionModel):
             anchor_quantized = self.gaussian_conditional.decompress(
                 anchor_strings, indexes_anchor, means=means_anchor_encode
             )
+
+            y_anchor_decode = torch.zeros(decode_shape).to(device)
             y_anchor_decode[:, :, 0::2, 0::2] = anchor_quantized[:, :, 0::2, :]
             y_anchor_decode[:, :, 1::2, 1::2] = anchor_quantized[:, :, 1::2, :]
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_decode)
-            params = self.ParamAggregation[slice_index](
-                torch.concat([masked_context, support], dim=1)
-            )
-            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            y_non_anchor_encode = torch.zeros(encode_shape).to(device)
-            means_non_anchor_encode = torch.zeros(encode_shape).to(device)
-            scales_non_anchor_encode = torch.zeros(encode_shape).to(device)
+            (
+                means_non_anchor_encode,
+                scales_non_anchor_encode,
+            ) = self._checkerboard_non_anchor_compress(
+                slice_index, support, masked_context, device
+            )
 
             non_anchor = y_slices[slice_index].clone()
+            y_non_anchor_encode = torch.zeros(encode_shape).to(device)
             y_non_anchor_encode[:, :, 0::2, :] = non_anchor[:, :, 0::2, 1::2]
             y_non_anchor_encode[:, :, 1::2, :] = non_anchor[:, :, 1::2, 0::2]
-            means_non_anchor_encode[:, :, 0::2, :] = means_non_anchor[:, :, 0::2, 1::2]
-            means_non_anchor_encode[:, :, 1::2, :] = means_non_anchor[:, :, 1::2, 0::2]
-            scales_non_anchor_encode[:, :, 0::2, :] = scales_non_anchor[
-                :, :, 0::2, 1::2
-            ]
-            scales_non_anchor_encode[:, :, 1::2, :] = scales_non_anchor[
-                :, :, 1::2, 0::2
-            ]
 
             indexes_non_anchor = self.gaussian_conditional.build_indexes(
                 scales_non_anchor_encode
@@ -505,7 +492,7 @@ class TestModel(CompressionModel):
                 non_anchor_strings, indexes_non_anchor, means=means_non_anchor_encode
             )
 
-            y_non_anchor_quantized = torch.zeros_like(means_anchor)
+            y_non_anchor_quantized = torch.zeros_like(y_anchor_decode)
             y_non_anchor_quantized[:, :, 0::2, 1::2] = non_anchor_quantized[
                 :, :, 0::2, :
             ]
@@ -534,6 +521,46 @@ class TestModel(CompressionModel):
                 "params": params_time,
             },
         }
+
+    def _checkerboard_anchor_compress(self, slice_index, support, ctx_params, device):
+        means, scales = self.ParamAggregation[slice_index](
+            torch.concat([ctx_params, support], dim=1)
+        ).chunk(2, 1)
+
+        decode_shape = means.shape
+        B, C, H, W = decode_shape
+        encode_shape = (B, C, H, W // 2)
+
+        means_encode = torch.zeros(encode_shape).to(device)
+        scales_encode = torch.zeros(encode_shape).to(device)
+
+        means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
+        means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
+        scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
+        scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
+
+        return means_encode, scales_encode, encode_shape, decode_shape
+
+    def _checkerboard_non_anchor_compress(
+        self, slice_index, support, ctx_params, device
+    ):
+        means, scales = self.ParamAggregation[slice_index](
+            torch.concat([ctx_params, support], dim=1)
+        ).chunk(2, 1)
+
+        decode_shape = means.shape
+        B, C, H, W = decode_shape
+        encode_shape = (B, C, H, W // 2)
+
+        means_encode = torch.zeros(encode_shape).to(device)
+        scales_encode = torch.zeros(encode_shape).to(device)
+
+        means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
+        means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
+        scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
+        scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
+
+        return means_encode, scales_encode
 
     def decompress(self, strings, shape, **kwargs):
         # Interface compatibility (strings should be list[list[str]]):
@@ -571,23 +598,16 @@ class TestModel(CompressionModel):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
+
             ### checkboard process 1
-            params = self.ParamAggregation[slice_index](
-                torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
+            (
+                means_anchor_encode,
+                scales_anchor_encode,
+                encode_shape,
+                decode_shape,
+            ) = self._checkerboard_anchor_compress(
+                slice_index, support, ctx_params_anchor_split[slice_index], device
             )
-            means_anchor, scales_anchor = params.chunk(2, 1)
-
-            B_anchor, C_anchor, H_anchor, W_anchor = means_anchor.size()
-            encode_shape = (B_anchor, C_anchor, H_anchor, W_anchor // 2)
-            decode_shape = (B_anchor, C_anchor, H_anchor, W_anchor)
-            means_anchor_encode = torch.zeros(encode_shape).to(device)
-            scales_anchor_encode = torch.zeros(encode_shape).to(device)
-            y_anchor_decode = torch.zeros(decode_shape).to(device)
-
-            means_anchor_encode[:, :, 0::2, :] = means_anchor[:, :, 0::2, 0::2]
-            means_anchor_encode[:, :, 1::2, :] = means_anchor[:, :, 1::2, 1::2]
-            scales_anchor_encode[:, :, 0::2, :] = scales_anchor[:, :, 0::2, 0::2]
-            scales_anchor_encode[:, :, 1::2, :] = scales_anchor[:, :, 1::2, 1::2]
 
             indexes_anchor = self.gaussian_conditional.build_indexes(
                 scales_anchor_encode
@@ -597,27 +617,19 @@ class TestModel(CompressionModel):
                 anchor_strings, indexes_anchor, means=means_anchor_encode
             )
 
+            y_anchor_decode = torch.zeros(decode_shape).to(device)
             y_anchor_decode[:, :, 0::2, 0::2] = anchor_quantized[:, :, 0::2, :]
             y_anchor_decode[:, :, 1::2, 1::2] = anchor_quantized[:, :, 1::2, :]
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_decode)
-            params = self.ParamAggregation[slice_index](
-                torch.concat([masked_context, support], dim=1)
+
+            (
+                means_non_anchor_encode,
+                scales_non_anchor_encode,
+            ) = self._checkerboard_non_anchor_compress(
+                slice_index, support, masked_context, device
             )
-            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
-
-            means_non_anchor_encode = torch.zeros(encode_shape).to(device)
-            scales_non_anchor_encode = torch.zeros(encode_shape).to(device)
-
-            means_non_anchor_encode[:, :, 0::2, :] = means_non_anchor[:, :, 0::2, 1::2]
-            means_non_anchor_encode[:, :, 1::2, :] = means_non_anchor[:, :, 1::2, 0::2]
-            scales_non_anchor_encode[:, :, 0::2, :] = scales_non_anchor[
-                :, :, 0::2, 1::2
-            ]
-            scales_non_anchor_encode[:, :, 1::2, :] = scales_non_anchor[
-                :, :, 1::2, 0::2
-            ]
 
             indexes_non_anchor = self.gaussian_conditional.build_indexes(
                 scales_non_anchor_encode
@@ -627,7 +639,7 @@ class TestModel(CompressionModel):
                 non_anchor_strings, indexes_non_anchor, means=means_non_anchor_encode
             )
 
-            y_non_anchor_quantized = torch.zeros_like(means_anchor)
+            y_non_anchor_quantized = torch.zeros_like(y_anchor_decode)
             y_non_anchor_quantized[:, :, 0::2, 1::2] = non_anchor_quantized[
                 :, :, 0::2, :
             ]
