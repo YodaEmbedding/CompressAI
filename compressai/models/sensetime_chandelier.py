@@ -267,37 +267,8 @@ class TestModel(CompressionModel):
         y_hat_slices = []
         y_hat_slices_for_gs = []
         for slice_index, y_slice in enumerate(y_slices):
-            if slice_index == 0:
-                support_slices = []
-            elif slice_index == 1:
-                support_slices = y_hat_slices[0]
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-            else:
-                support_slices = torch.concat(
-                    [y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1
-                )
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-            ##support mean and scale
-            support = (
-                torch.concat([latent_means, latent_scales], dim=1)
-                if slice_index == 0
-                else torch.concat(
-                    [
-                        support_slices_ch_mean,
-                        support_slices_ch_scale,
-                        latent_means,
-                        latent_scales,
-                    ],
-                    dim=1,
-                )
+            support = self._calculate_support(
+                slice_index, y_hat_slices, latent_means, latent_scales
             )
             ### checkboard process 1
             y_anchor = anchor_split[slice_index]
@@ -424,38 +395,8 @@ class TestModel(CompressionModel):
         y_hat_slices = []
         params_start = time.time()
         for slice_index, y_slice in enumerate(y_slices):
-            if slice_index == 0:
-                support_slices = []
-            elif slice_index == 1:
-                support_slices = y_hat_slices[0]
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-
-            else:
-                support_slices = torch.concat(
-                    [y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1
-                )
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-            ##support mean and scale
-            support = (
-                torch.concat([latent_means, latent_scales], dim=1)
-                if slice_index == 0
-                else torch.concat(
-                    [
-                        support_slices_ch_mean,
-                        support_slices_ch_scale,
-                        latent_means,
-                        latent_scales,
-                    ],
-                    dim=1,
-                )
+            support = self._calculate_support(
+                slice_index, y_hat_slices, latent_means, latent_scales
             )
             ### checkboard process 1
             y_anchor = y_slices[slice_index].clone()
@@ -599,38 +540,8 @@ class TestModel(CompressionModel):
 
         y_hat_slices = []
         for slice_index in range(len(self.groups) - 1):
-            if slice_index == 0:
-                support_slices = []
-            elif slice_index == 1:
-                support_slices = y_hat_slices[0]
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-
-            else:
-                support_slices = torch.concat(
-                    [y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1
-                )
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-            ##support mean and scale
-            support = (
-                torch.concat([latent_means, latent_scales], dim=1)
-                if slice_index == 0
-                else torch.concat(
-                    [
-                        support_slices_ch_mean,
-                        support_slices_ch_scale,
-                        latent_means,
-                        latent_scales,
-                    ],
-                    dim=1,
-                )
+            support = self._calculate_support(
+                slice_index, y_hat_slices, latent_means, latent_scales
             )
             ### checkboard process 1
             params = self.ParamAggregation[slice_index](
@@ -753,38 +664,8 @@ class TestModel(CompressionModel):
         y_hat_slices = []
         params_start = time.time()
         for slice_index, y_slice in enumerate(y_slices):
-            if slice_index == 0:
-                support_slices = []
-            elif slice_index == 1:
-                support_slices = y_hat_slices[0]
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-
-            else:
-                support_slices = torch.concat(
-                    [y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1
-                )
-                support_slices_ch = self.cc_transforms[slice_index - 1](support_slices)
-                (
-                    support_slices_ch_mean,
-                    support_slices_ch_scale,
-                ) = support_slices_ch.chunk(2, 1)
-            ##support mean and scale
-            support = (
-                torch.concat([latent_means, latent_scales], dim=1)
-                if slice_index == 0
-                else torch.concat(
-                    [
-                        support_slices_ch_mean,
-                        support_slices_ch_scale,
-                        latent_means,
-                        latent_scales,
-                    ],
-                    dim=1,
-                )
+            support = self._calculate_support(
+                slice_index, y_hat_slices, latent_means, latent_scales
             )
             ### checkboard process 1
             y_anchor = anchor_split[slice_index]
@@ -869,6 +750,26 @@ class TestModel(CompressionModel):
             quantized = self.quantizer.quantize(y - means, "ste") + means
             quantized_for_g_s = self.quantizer.quantize(y - means, "ste") + means
         return quantized, quantized_for_g_s
+
+    def _calculate_support(
+        self, slice_index, y_hat_slices, latent_means, latent_scales
+    ):
+        if slice_index == 0:
+            return torch.concat([latent_means, latent_scales], dim=1)
+
+        support_slices_ch = self.cc_transforms[slice_index - 1](
+            y_hat_slices[0]
+            if slice_index == 1
+            else torch.concat([y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1)
+        )
+        support_slices_ch_mean, support_slices_ch_scale = support_slices_ch.chunk(2, 1)
+        support = [
+            support_slices_ch_mean,
+            support_slices_ch_scale,
+            latent_means,
+            latent_scales,
+        ]
+        return torch.concat(support, dim=1)
 
     def _unembed(self, y):
         anchor = torch.zeros_like(y).to(y.device)
