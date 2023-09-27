@@ -276,55 +276,30 @@ class TestModel(CompressionModel):
             scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
             means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
-            ### checkboard process 1
-            params = self.ParamAggregation[slice_index](
-                torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            )
-            means_anchor, scales_anchor = params.chunk(2, 1)
-
-            scales_hat_split[:, :, 0::2, 0::2] = scales_anchor[:, :, 0::2, 0::2]
-            scales_hat_split[:, :, 1::2, 1::2] = scales_anchor[:, :, 1::2, 1::2]
-            means_hat_split[:, :, 0::2, 0::2] = means_anchor[:, :, 0::2, 0::2]
-            means_hat_split[:, :, 1::2, 1::2] = means_anchor[:, :, 1::2, 1::2]
-
-            y_anchor_quantilized, y_anchor_quantilized_for_gs = self._apply_quantizer(
-                y_anchor, means_anchor, noisequant
+            y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
+                y_anchor,
+                slice_index,
+                support,
+                means_hat_split,
+                scales_hat_split,
+                ctx_params=ctx_params_anchor_split[slice_index],
+                noisequant=noisequant,
+                mode="anchor",
             )
 
-            y_anchor_quantilized[:, :, 0::2, 1::2] = 0
-            y_anchor_quantilized[:, :, 1::2, 0::2] = 0
-            y_anchor_quantilized_for_gs[:, :, 0::2, 1::2] = 0
-            y_anchor_quantilized_for_gs[:, :, 1::2, 0::2] = 0
-
-            ### checkboard process 2
-            masked_context = self.context_prediction[slice_index](y_anchor_quantilized)
-            params = self.ParamAggregation[slice_index](
-                torch.concat([masked_context, support], dim=1)
+            y_non_anchor_hat, y_non_anchor_hat_for_gs = self._checkerboard_forward_step(
+                y_non_anchor,
+                slice_index,
+                support,
+                means_hat_split,
+                scales_hat_split,
+                ctx_params=self.context_prediction[slice_index](y_anchor_hat),
+                noisequant=noisequant,
+                mode="non_anchor",
             )
-            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
 
-            scales_hat_split[:, :, 0::2, 1::2] = scales_non_anchor[:, :, 0::2, 1::2]
-            scales_hat_split[:, :, 1::2, 0::2] = scales_non_anchor[:, :, 1::2, 0::2]
-            means_hat_split[:, :, 0::2, 1::2] = means_non_anchor[:, :, 0::2, 1::2]
-            means_hat_split[:, :, 1::2, 0::2] = means_non_anchor[:, :, 1::2, 0::2]
-
-            (
-                y_non_anchor_quantilized,
-                y_non_anchor_quantilized_for_gs,
-            ) = self._apply_quantizer(y_non_anchor, means_non_anchor, noisequant)
-
-            y_non_anchor_quantilized[:, :, 0::2, 0::2] = 0
-            y_non_anchor_quantilized[:, :, 1::2, 1::2] = 0
-            y_non_anchor_quantilized_for_gs[:, :, 0::2, 0::2] = 0
-            y_non_anchor_quantilized_for_gs[:, :, 1::2, 1::2] = 0
-
-            y_hat_slice = y_anchor_quantilized + y_non_anchor_quantilized
-            y_hat_slice_for_gs = (
-                y_anchor_quantilized_for_gs + y_non_anchor_quantilized_for_gs
-            )
-            y_hat_slices.append(y_hat_slice)
-            ### ste for synthesis model
-            y_hat_slices_for_gs.append(y_hat_slice_for_gs)
+            y_hat_slices.append(y_anchor_hat + y_non_anchor_hat)
+            y_hat_slices_for_gs.append(y_anchor_hat_for_gs + y_non_anchor_hat_for_gs)
 
             # entropy estimation
             _, y_slice_likelihood = self.gaussian_conditional(
@@ -343,6 +318,39 @@ class TestModel(CompressionModel):
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
+
+    def _checkerboard_forward_step(
+        self, y, slice_index, support, means, scales, ctx_params, noisequant, mode
+    ):
+        means_new, scales_new = self.ParamAggregation[slice_index](
+            torch.concat([ctx_params, support], dim=1)
+        ).chunk(2, 1)
+
+        if mode == "anchor":
+            means[:, :, 0::2, 0::2] = means_new[:, :, 0::2, 0::2]
+            means[:, :, 1::2, 1::2] = means_new[:, :, 1::2, 1::2]
+            scales[:, :, 0::2, 0::2] = scales_new[:, :, 0::2, 0::2]
+            scales[:, :, 1::2, 1::2] = scales_new[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            means[:, :, 0::2, 1::2] = means_new[:, :, 0::2, 1::2]
+            means[:, :, 1::2, 0::2] = means_new[:, :, 1::2, 0::2]
+            scales[:, :, 0::2, 1::2] = scales_new[:, :, 0::2, 1::2]
+            scales[:, :, 1::2, 0::2] = scales_new[:, :, 1::2, 0::2]
+
+        y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, noisequant)
+
+        if mode == "anchor":
+            y_hat[:, :, 0::2, 1::2] = 0
+            y_hat[:, :, 1::2, 0::2] = 0
+            y_hat_for_gs[:, :, 0::2, 1::2] = 0
+            y_hat_for_gs[:, :, 1::2, 0::2] = 0
+        elif mode == "non_anchor":
+            y_hat[:, :, 0::2, 0::2] = 0
+            y_hat[:, :, 1::2, 1::2] = 0
+            y_hat_for_gs[:, :, 0::2, 0::2] = 0
+            y_hat_for_gs[:, :, 1::2, 1::2] = 0
+
+        return y_hat, y_hat_for_gs
 
     # def load_state_dict(self, state_dict):
     #     update_registered_buffers(
