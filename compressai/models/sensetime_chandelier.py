@@ -670,8 +670,10 @@ class TestModel(CompressionModel):
     def _checkerboard_codec(
         self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
     ):
+        y_anchor_input, y_non_anchor_input = y_input
+
         anchor_strings, y_anchor_hat = self._checkerboard_codec_step(
-            y_input[0],
+            y_anchor_input,
             slice_index,
             support,
             ctx_params=ctx_params_anchor_split[slice_index],
@@ -681,7 +683,7 @@ class TestModel(CompressionModel):
         )
 
         non_anchor_strings, y_non_anchor_hat = self._checkerboard_codec_step(
-            y_input[1],
+            y_non_anchor_input,
             slice_index,
             support,
             ctx_params=self.context_prediction[slice_index](y_anchor_hat),
