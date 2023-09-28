@@ -304,15 +304,11 @@ class TestModel(CompressionModel):
 
             y_anchor = anchor_split[slice_index]
             y_non_anchor = non_anchor_split[slice_index]
-            scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
-            means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
-            y_hat_i, y_hat_for_gs_i = self._checkerboard_forward(
+            y_hat_i, y_hat_for_gs_i, means, scales = self._checkerboard_forward(
                 [y_anchor, y_non_anchor],
                 slice_index,
                 support,
-                means_hat_split,
-                scales_hat_split,
                 ctx_params_anchor_split,
                 mode_quant=mode_quant,
             )
@@ -322,7 +318,7 @@ class TestModel(CompressionModel):
 
             # entropy estimation
             _, y_slice_likelihood = self.gaussian_conditional(
-                y_slice, scales_hat_split, means=means_hat_split
+                y_slice, scales, means=means
             )
             y_likelihood.append(y_slice_likelihood)
 
@@ -512,15 +508,11 @@ class TestModel(CompressionModel):
 
             y_anchor = anchor_split[slice_index]
             y_non_anchor = non_anchor_split[slice_index]
-            scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
-            means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
-            y_hat_i, _ = self._checkerboard_forward(
+            y_hat_i, _, means, scales = self._checkerboard_forward(
                 [y_anchor, y_non_anchor],
                 slice_index,
                 support,
-                means_hat_split,
-                scales_hat_split,
                 ctx_params_anchor_split,
                 mode_quant="ste",
             )
@@ -530,7 +522,7 @@ class TestModel(CompressionModel):
 
             # entropy estimation
             _, y_slice_likelihood = self.gaussian_conditional(
-                y_slice, scales_hat_split, means=means_hat_split
+                y_slice, scales, means=means
             )
             y_likelihood.append(y_slice_likelihood)
 
@@ -584,16 +576,12 @@ class TestModel(CompressionModel):
         return torch.concat(support, dim=1)
 
     def _checkerboard_forward(
-        self,
-        y_input,
-        slice_index,
-        support,
-        means,
-        scales,
-        ctx_params_anchor_split,
-        mode_quant,
+        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode_quant
     ):
         y_anchor, y_non_anchor = y_input
+
+        means = torch.zeros_like(y_anchor).to(device)
+        scales = torch.zeros_like(y_anchor).to(device)
 
         y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
             y_anchor,
@@ -620,7 +608,7 @@ class TestModel(CompressionModel):
         y_hat = y_anchor_hat + y_non_anchor_hat
         y_hat_for_gs = y_anchor_hat_for_gs + y_non_anchor_hat_for_gs
 
-        return y_hat, y_hat_for_gs
+        return y_hat, y_hat_for_gs, means, scales
 
     def _checkerboard_forward_step(
         self, y, slice_index, support, means, scales, ctx_params, mode_quant, mode
