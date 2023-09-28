@@ -307,78 +307,6 @@ class TestModel(CompressionModel):
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
 
-    def _checkerboard_forward(
-        self,
-        y_input,
-        slice_index,
-        support,
-        means,
-        scales,
-        ctx_params_anchor_split,
-        noisequant,
-    ):
-        y_anchor, y_non_anchor = y_input
-
-        y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
-            y_anchor,
-            slice_index,
-            support,
-            means,
-            scales,
-            ctx_params=ctx_params_anchor_split[slice_index],
-            noisequant=noisequant,
-            mode="anchor",
-        )
-
-        y_non_anchor_hat, y_non_anchor_hat_for_gs = self._checkerboard_forward_step(
-            y_non_anchor,
-            slice_index,
-            support,
-            means,
-            scales,
-            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
-            noisequant=noisequant,
-            mode="non_anchor",
-        )
-
-        y_hat = y_anchor_hat + y_non_anchor_hat
-        y_hat_for_gs = y_anchor_hat_for_gs + y_non_anchor_hat_for_gs
-
-        return y_hat, y_hat_for_gs
-
-    def _checkerboard_forward_step(
-        self, y, slice_index, support, means, scales, ctx_params, noisequant, mode
-    ):
-        means_new, scales_new = self.ParamAggregation[slice_index](
-            torch.concat([ctx_params, support], dim=1)
-        ).chunk(2, 1)
-
-        if mode == "anchor":
-            means[:, :, 0::2, 0::2] = means_new[:, :, 0::2, 0::2]
-            means[:, :, 1::2, 1::2] = means_new[:, :, 1::2, 1::2]
-            scales[:, :, 0::2, 0::2] = scales_new[:, :, 0::2, 0::2]
-            scales[:, :, 1::2, 1::2] = scales_new[:, :, 1::2, 1::2]
-        elif mode == "non_anchor":
-            means[:, :, 0::2, 1::2] = means_new[:, :, 0::2, 1::2]
-            means[:, :, 1::2, 0::2] = means_new[:, :, 1::2, 0::2]
-            scales[:, :, 0::2, 1::2] = scales_new[:, :, 0::2, 1::2]
-            scales[:, :, 1::2, 0::2] = scales_new[:, :, 1::2, 0::2]
-
-        y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, noisequant)
-
-        if mode == "anchor":
-            y_hat[:, :, 0::2, 1::2] = 0
-            y_hat[:, :, 1::2, 0::2] = 0
-            y_hat_for_gs[:, :, 0::2, 1::2] = 0
-            y_hat_for_gs[:, :, 1::2, 0::2] = 0
-        elif mode == "non_anchor":
-            y_hat[:, :, 0::2, 0::2] = 0
-            y_hat[:, :, 1::2, 1::2] = 0
-            y_hat_for_gs[:, :, 0::2, 0::2] = 0
-            y_hat_for_gs[:, :, 1::2, 1::2] = 0
-
-        return y_hat, y_hat_for_gs
-
     # def load_state_dict(self, state_dict):
     #     update_registered_buffers(
     #         self.gaussian_conditional,
@@ -666,6 +594,78 @@ class TestModel(CompressionModel):
             latent_scales,
         ]
         return torch.concat(support, dim=1)
+
+    def _checkerboard_forward(
+        self,
+        y_input,
+        slice_index,
+        support,
+        means,
+        scales,
+        ctx_params_anchor_split,
+        noisequant,
+    ):
+        y_anchor, y_non_anchor = y_input
+
+        y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
+            y_anchor,
+            slice_index,
+            support,
+            means,
+            scales,
+            ctx_params=ctx_params_anchor_split[slice_index],
+            noisequant=noisequant,
+            mode="anchor",
+        )
+
+        y_non_anchor_hat, y_non_anchor_hat_for_gs = self._checkerboard_forward_step(
+            y_non_anchor,
+            slice_index,
+            support,
+            means,
+            scales,
+            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
+            noisequant=noisequant,
+            mode="non_anchor",
+        )
+
+        y_hat = y_anchor_hat + y_non_anchor_hat
+        y_hat_for_gs = y_anchor_hat_for_gs + y_non_anchor_hat_for_gs
+
+        return y_hat, y_hat_for_gs
+
+    def _checkerboard_forward_step(
+        self, y, slice_index, support, means, scales, ctx_params, noisequant, mode
+    ):
+        means_new, scales_new = self.ParamAggregation[slice_index](
+            torch.concat([ctx_params, support], dim=1)
+        ).chunk(2, 1)
+
+        if mode == "anchor":
+            means[:, :, 0::2, 0::2] = means_new[:, :, 0::2, 0::2]
+            means[:, :, 1::2, 1::2] = means_new[:, :, 1::2, 1::2]
+            scales[:, :, 0::2, 0::2] = scales_new[:, :, 0::2, 0::2]
+            scales[:, :, 1::2, 1::2] = scales_new[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            means[:, :, 0::2, 1::2] = means_new[:, :, 0::2, 1::2]
+            means[:, :, 1::2, 0::2] = means_new[:, :, 1::2, 0::2]
+            scales[:, :, 0::2, 1::2] = scales_new[:, :, 0::2, 1::2]
+            scales[:, :, 1::2, 0::2] = scales_new[:, :, 1::2, 0::2]
+
+        y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, noisequant)
+
+        if mode == "anchor":
+            y_hat[:, :, 0::2, 1::2] = 0
+            y_hat[:, :, 1::2, 0::2] = 0
+            y_hat_for_gs[:, :, 0::2, 1::2] = 0
+            y_hat_for_gs[:, :, 1::2, 0::2] = 0
+        elif mode == "non_anchor":
+            y_hat[:, :, 0::2, 0::2] = 0
+            y_hat[:, :, 1::2, 1::2] = 0
+            y_hat_for_gs[:, :, 0::2, 0::2] = 0
+            y_hat_for_gs[:, :, 1::2, 1::2] = 0
+
+        return y_hat, y_hat_for_gs
 
     def _checkerboard_codec(
         self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
