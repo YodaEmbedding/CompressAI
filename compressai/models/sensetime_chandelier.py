@@ -437,26 +437,17 @@ class TestModel(CompressionModel):
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
 
-            anchor_strings, y_anchor_decode = self._checkerboard_codec_step(
-                y_slices[slice_index].clone(),
+            y_hat_i, y_strings_i = self._checkerboard_codec(
+                [y_slices[slice_index].clone(), y_slices[slice_index].clone()],
                 slice_index,
                 support,
-                ctx_params=ctx_params_anchor_split[slice_index],
-                device=device,
-                mode="compress,anchor",
+                ctx_params_anchor_split,
+                device,
+                mode="compress",
             )
 
-            non_anchor_strings, y_non_anchor_decode = self._checkerboard_codec_step(
-                y_slices[slice_index].clone(),
-                slice_index,
-                support,
-                ctx_params=self.context_prediction[slice_index](y_anchor_decode),
-                device=device,
-                mode="compress,non_anchor",
-            )
-
-            y_hat_slices.append(y_anchor_decode + y_non_anchor_decode)
-            y_strings.append([anchor_strings, non_anchor_strings])
+            y_hat_slices.append(y_hat_i)
+            y_strings.append(y_strings_i)
 
         # Flatten for interface compatibility:
         # strings = [y_strings, z_strings]
@@ -475,11 +466,37 @@ class TestModel(CompressionModel):
             },
         }
 
-    def _checkerboard_codec_step(
-        self, y_input, slice_index, support, ctx_params, device, mode
+    def _checkerboard_codec(
+        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
     ):
-        [mode_codec, mode_step] = mode.split(",")
+        anchor_strings, y_anchor_hat = self._checkerboard_codec_step(
+            y_input[0],
+            slice_index,
+            support,
+            ctx_params=ctx_params_anchor_split[slice_index],
+            device=device,
+            mode_codec=mode,
+            mode_step="anchor",
+        )
 
+        non_anchor_strings, y_non_anchor_hat = self._checkerboard_codec_step(
+            y_input[1],
+            slice_index,
+            support,
+            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
+            device=device,
+            mode_codec=mode,
+            mode_step="non_anchor",
+        )
+
+        y_hat = y_anchor_hat + y_non_anchor_hat
+        y_strings = [anchor_strings, non_anchor_strings]
+
+        return y_hat, y_strings
+
+    def _checkerboard_codec_step(
+        self, y_input, slice_index, support, ctx_params, device, mode_codec, mode_step
+    ):
         means, scales = self.ParamAggregation[slice_index](
             torch.concat([ctx_params, support], dim=1)
         ).chunk(2, 1)
@@ -574,25 +591,16 @@ class TestModel(CompressionModel):
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
 
-            _, y_anchor_decode = self._checkerboard_codec_step(
-                y_strings[slice_index][0],
+            y_hat_i, _ = self._checkerboard_codec(
+                y_strings[slice_index],
                 slice_index,
                 support,
-                ctx_params=ctx_params_anchor_split[slice_index],
-                device=device,
-                mode="decompress,anchor",
+                ctx_params_anchor_split,
+                device,
+                mode="decompress",
             )
 
-            _, y_non_anchor_decode = self._checkerboard_codec_step(
-                y_strings[slice_index][1],
-                slice_index,
-                support,
-                ctx_params=self.context_prediction[slice_index](y_anchor_decode),
-                device=device,
-                mode="decompress,non_anchor",
-            )
-
-            y_hat_slices.append(y_anchor_decode + y_non_anchor_decode)
+            y_hat_slices.append(y_hat_i)
 
         y_hat = torch.cat(y_hat_slices, dim=1)
 
