@@ -1,13 +1,15 @@
 import math
+import time
 
 import torch
 import torch.nn as nn
 
 from torch import Tensor
+from torch.nn.init import trunc_normal_
 
-from compressai.entropy_models import EntropyBottleneck, GaussianConditional
+from compressai.entropy_models import GaussianConditional
 from compressai.layers import AttentionBlock, conv3x3
-from compressai.ops import quantize_ste
+from compressai.ops import quantize_ste as ste_round
 from compressai.registry import register_model
 
 from .base import CompressionModel
@@ -108,16 +110,47 @@ class TestModel(CompressionModel):
         groups=[0, 16, 16, 32, 64, 192],
         **kwargs,
     ):
-        super().__init__()
+        """ELIC 2022; uneven channel groups with checkerboard context.
+
+        Context model from [He2022], with minor simplifications.
+        Based on modified attention model architecture from [Cheng2020].
+
+        .. note::
+
+            This implementation contains some differences compared to
+            the original [He2022] paper. For instance, the implemented
+            context model only uses the first and the previously decoded
+            channel groups to predict the current channel group. In
+            contrast, the original paper uses all previously decoded
+            channel groups.
+
+        [He2022]: `"ELIC: Efficient Learned Image Compression with
+        Unevenly Grouped Space-Channel Contextual Adaptive Coding"
+        <https://arxiv.org/abs/2203.10886>`_, by Dailan He, Ziming Yang,
+        Weikun Peng, Rui Ma, Hongwei Qin, and Yan Wang, CVPR 2022.
+
+        [Cheng2020]: `"Learned Image Compression with Discretized Gaussian
+        Mixture Likelihoods and Attention Modules"
+        <https://arxiv.org/abs/2001.01568>`_, by Zhengxue Cheng, Heming Sun,
+        Masaru Takeuchi, and Jiro Katto, CVPR 2020.
+
+        Args:
+             N (int): Number of main network channels
+             M (int): Number of latent space channels
+             num_slices (int): Number of slices/groups
+             groups (list[int]): Number of channels in each channel group
+        """
+        super().__init__(entropy_bottleneck_channels=N)
+
+        assert len(groups) == num_slices + 1
+        assert sum(groups) == M
+        assert groups[0] == 0
+
         self.N = int(N)
         self.M = int(M)
         self.num_slices = num_slices
-
-        """
-             N: channel number of main network
-             M: channnel number of latent space
-        """
         self.groups = groups
+
         self.g_a = nn.Sequential(
             conv(3, N),
             ResidualBottleneckBlock(N),
@@ -218,8 +251,6 @@ class TestModel(CompressionModel):
 
         self.gaussian_conditional = GaussianConditional(None)
 
-        self.entropy_bottleneck = EntropyBottleneck(N)
-
     @property
     def downsampling_factor(self) -> int:
         return 2 ** (4 + 2)
@@ -231,23 +262,23 @@ class TestModel(CompressionModel):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
-                nn.init.trunc_normal_(m.weight, std=0.02)
+                trunc_normal_(m.weight, std=0.02)
                 if isinstance(m, nn.Linear) and m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.bias, 0)
                 nn.init.constant_(m.weight, 1.0)
 
-    def forward(self, x, noisequant=False):
+    def forward(self, x, mode_quant="ste"):
         y = self.g_a(x)
         B, C, H, W = y.shape
 
         z = self.h_a(y)
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        if not noisequant:
+        if mode_quant == "ste":
             z_offset = self.entropy_bottleneck._get_medians()
             z_tmp = z - z_offset
-            z_hat = quantize_ste(z_tmp) + z_offset
+            z_hat = ste_round(z_tmp) + z_offset
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
@@ -283,7 +314,7 @@ class TestModel(CompressionModel):
                 means_hat_split,
                 scales_hat_split,
                 ctx_params_anchor_split,
-                noisequant=noisequant,
+                mode_quant=mode_quant,
             )
 
             y_hat_slices.append(y_hat_i)
@@ -296,9 +327,6 @@ class TestModel(CompressionModel):
             y_likelihood.append(y_slice_likelihood)
 
         y_likelihoods = torch.cat(y_likelihood, dim=1)
-        """
-        use STE(y) as the input of synthesizer
-        """
         y_hat = torch.cat(y_hat_slices_for_gs, dim=1)
         x_hat = self.g_s(y_hat)
 
@@ -307,14 +335,14 @@ class TestModel(CompressionModel):
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
 
-    # def load_state_dict(self, state_dict):
-    #     update_registered_buffers(
-    #         self.gaussian_conditional,
-    #         "gaussian_conditional",
-    #         ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
-    #         state_dict,
-    #     )
-    #     return super().load_state_dict(state_dict)
+    def load_state_dict(self, state_dict):
+        update_registered_buffers(
+            self.gaussian_conditional,
+            "gaussian_conditional",
+            ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+            state_dict,
+        )
+        super().load_state_dict(state_dict)
 
     @classmethod
     def from_state_dict(cls, state_dict):
@@ -331,10 +359,6 @@ class TestModel(CompressionModel):
         return updated
 
     def compress(self, x):
-        import time
-
-        device = x.device
-
         y_enc_start = time.time()
         y = self.g_a(x)
         y_enc = time.time() - y_enc_start
@@ -370,7 +394,7 @@ class TestModel(CompressionModel):
                 slice_index,
                 support,
                 ctx_params_anchor_split,
-                device,
+                x.device,
                 mode="compress",
             )
 
@@ -413,14 +437,12 @@ class TestModel(CompressionModel):
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        device = z_hat.device
-
         y_shape = [z_hat.shape[2] * 4, z_hat.shape[3] * 4]
         y_strings = strings[0]
 
         ctx_params_anchor = torch.zeros(
             (B, self.M * 2, z_hat.shape[2] * 4, z_hat.shape[3] * 4)
-        ).to(device)
+        ).to(z_hat.device)
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], 1
         )
@@ -436,15 +458,13 @@ class TestModel(CompressionModel):
                 slice_index,
                 support,
                 ctx_params_anchor_split,
-                device,
+                z_hat.device,
                 mode="decompress",
             )
 
             y_hat_slices.append(y_hat_i)
 
         y_hat = torch.cat(y_hat_slices, dim=1)
-
-        import time
 
         y_dec_start = time.time()
         x_hat = self.g_s(y_hat).clamp_(0, 1)
@@ -453,8 +473,6 @@ class TestModel(CompressionModel):
         return {"x_hat": x_hat, "time": {"y_dec": y_dec}}
 
     def inference(self, x):
-        import time
-
         y_enc_start = time.time()
         y = self.g_a(x)
         y_enc = time.time() - y_enc_start
@@ -466,7 +484,7 @@ class TestModel(CompressionModel):
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
         z_offset = self.entropy_bottleneck._get_medians()
         z_tmp = z - z_offset
-        z_hat = quantize_ste(z_tmp) + z_offset
+        z_hat = ste_round(z_tmp) + z_offset
 
         z_dec_start = time.time()
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
@@ -504,7 +522,7 @@ class TestModel(CompressionModel):
                 means_hat_split,
                 scales_hat_split,
                 ctx_params_anchor_split,
-                noisequant=False,
+                mode_quant="ste",
             )
 
             y_hat_slices.append(y_hat_i)
@@ -518,9 +536,6 @@ class TestModel(CompressionModel):
 
         params_time = time.time() - params_start
         y_likelihoods = torch.cat(y_likelihood, dim=1)
-        """
-        use STE(y) as the input of synthesizer
-        """
         y_hat = torch.cat(y_hat_slices, dim=1)
         y_dec_start = time.time()
         x_hat = self.g_s(y_hat)
@@ -537,13 +552,15 @@ class TestModel(CompressionModel):
             },
         }
 
-    def _apply_quantizer(self, y, means, noisequant):
-        if noisequant:
+    def _apply_quantizer(self, y, means, mode_quant):
+        if mode_quant == "noise":
             quantized = self.quantizer.quantize(y, "noise")
             quantized_for_g_s = self.quantizer.quantize(y, "ste")
-        else:
+        elif mode_quant == "ste":
             quantized = self.quantizer.quantize(y - means, "ste") + means
             quantized_for_g_s = self.quantizer.quantize(y - means, "ste") + means
+        else:
+            raise ValueError(f"Unknown quantization mode: {mode_quant}")
         return quantized, quantized_for_g_s
 
     def _calculate_support(
@@ -574,7 +591,7 @@ class TestModel(CompressionModel):
         means,
         scales,
         ctx_params_anchor_split,
-        noisequant,
+        mode_quant,
     ):
         y_anchor, y_non_anchor = y_input
 
@@ -585,7 +602,7 @@ class TestModel(CompressionModel):
             means,
             scales,
             ctx_params=ctx_params_anchor_split[slice_index],
-            noisequant=noisequant,
+            mode_quant=mode_quant,
             mode="anchor",
         )
 
@@ -596,7 +613,7 @@ class TestModel(CompressionModel):
             means,
             scales,
             ctx_params=self.context_prediction[slice_index](y_anchor_hat),
-            noisequant=noisequant,
+            mode_quant=mode_quant,
             mode="non_anchor",
         )
 
@@ -606,7 +623,7 @@ class TestModel(CompressionModel):
         return y_hat, y_hat_for_gs
 
     def _checkerboard_forward_step(
-        self, y, slice_index, support, means, scales, ctx_params, noisequant, mode
+        self, y, slice_index, support, means, scales, ctx_params, mode_quant, mode
     ):
         means_new, scales_new = self.ParamAggregation[slice_index](
             torch.concat([ctx_params, support], dim=1)
@@ -623,7 +640,7 @@ class TestModel(CompressionModel):
             scales[:, :, 0::2, 1::2] = scales_new[:, :, 0::2, 1::2]
             scales[:, :, 1::2, 0::2] = scales_new[:, :, 1::2, 0::2]
 
-        y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, noisequant)
+        y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, mode_quant)
 
         if mode == "anchor":
             y_hat[:, :, 0::2, 1::2] = 0
