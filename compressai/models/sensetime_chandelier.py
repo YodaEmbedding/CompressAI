@@ -466,94 +466,6 @@ class TestModel(CompressionModel):
             },
         }
 
-    def _checkerboard_codec(
-        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
-    ):
-        anchor_strings, y_anchor_hat = self._checkerboard_codec_step(
-            y_input[0],
-            slice_index,
-            support,
-            ctx_params=ctx_params_anchor_split[slice_index],
-            device=device,
-            mode_codec=mode,
-            mode_step="anchor",
-        )
-
-        non_anchor_strings, y_non_anchor_hat = self._checkerboard_codec_step(
-            y_input[1],
-            slice_index,
-            support,
-            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
-            device=device,
-            mode_codec=mode,
-            mode_step="non_anchor",
-        )
-
-        y_hat = y_anchor_hat + y_non_anchor_hat
-        y_strings = [anchor_strings, non_anchor_strings]
-
-        return y_hat, y_strings
-
-    def _checkerboard_codec_step(
-        self, y_input, slice_index, support, ctx_params, device, mode_codec, mode_step
-    ):
-        means, scales = self.ParamAggregation[slice_index](
-            torch.concat([ctx_params, support], dim=1)
-        ).chunk(2, 1)
-
-        decode_shape = means.shape
-        B, C, H, W = decode_shape
-        encode_shape = (B, C, H, W // 2)
-
-        means_encode = torch.zeros(encode_shape).to(device)
-        scales_encode = torch.zeros(encode_shape).to(device)
-
-        if mode_step == "anchor":
-            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
-            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
-            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
-            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
-        elif mode_step == "non_anchor":
-            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
-            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
-            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
-            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
-
-        indexes = self.gaussian_conditional.build_indexes(scales_encode)
-
-        if mode_codec == "compress":
-            y = y_input
-            y_encode = torch.zeros(encode_shape).to(device)
-
-            if mode_step == "anchor":
-                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
-                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
-            elif mode_step == "non_anchor":
-                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
-                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
-
-            strings = self.gaussian_conditional.compress(
-                y_encode, indexes, means=means_encode
-            )
-
-        elif mode_codec == "decompress":
-            strings = y_input
-
-        quantized = self.gaussian_conditional.decompress(
-            strings, indexes, means=means_encode
-        )
-
-        y_decode = torch.zeros(decode_shape).to(device)
-
-        if mode_step == "anchor":
-            y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 1::2] = quantized[:, :, 1::2, :]
-        elif mode_step == "non_anchor":
-            y_decode[:, :, 0::2, 1::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
-
-        return strings, y_decode
-
     def decompress(self, strings, shape, **kwargs):
         # Interface compatibility (strings should be list[list[str]]):
         assert isinstance(strings, list)
@@ -754,6 +666,94 @@ class TestModel(CompressionModel):
             latent_scales,
         ]
         return torch.concat(support, dim=1)
+
+    def _checkerboard_codec(
+        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
+    ):
+        anchor_strings, y_anchor_hat = self._checkerboard_codec_step(
+            y_input[0],
+            slice_index,
+            support,
+            ctx_params=ctx_params_anchor_split[slice_index],
+            device=device,
+            mode_codec=mode,
+            mode_step="anchor",
+        )
+
+        non_anchor_strings, y_non_anchor_hat = self._checkerboard_codec_step(
+            y_input[1],
+            slice_index,
+            support,
+            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
+            device=device,
+            mode_codec=mode,
+            mode_step="non_anchor",
+        )
+
+        y_hat = y_anchor_hat + y_non_anchor_hat
+        y_strings = [anchor_strings, non_anchor_strings]
+
+        return y_hat, y_strings
+
+    def _checkerboard_codec_step(
+        self, y_input, slice_index, support, ctx_params, device, mode_codec, mode_step
+    ):
+        means, scales = self.ParamAggregation[slice_index](
+            torch.concat([ctx_params, support], dim=1)
+        ).chunk(2, 1)
+
+        decode_shape = means.shape
+        B, C, H, W = decode_shape
+        encode_shape = (B, C, H, W // 2)
+
+        means_encode = torch.zeros(encode_shape).to(device)
+        scales_encode = torch.zeros(encode_shape).to(device)
+
+        if mode_step == "anchor":
+            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
+            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
+            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
+            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
+        elif mode_step == "non_anchor":
+            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
+            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
+            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
+            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
+
+        indexes = self.gaussian_conditional.build_indexes(scales_encode)
+
+        if mode_codec == "compress":
+            y = y_input
+            y_encode = torch.zeros(encode_shape).to(device)
+
+            if mode_step == "anchor":
+                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
+                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
+            elif mode_step == "non_anchor":
+                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
+                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
+
+            strings = self.gaussian_conditional.compress(
+                y_encode, indexes, means=means_encode
+            )
+
+        elif mode_codec == "decompress":
+            strings = y_input
+
+        quantized = self.gaussian_conditional.decompress(
+            strings, indexes, means=means_encode
+        )
+
+        y_decode = torch.zeros(decode_shape).to(device)
+
+        if mode_step == "anchor":
+            y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
+            y_decode[:, :, 1::2, 1::2] = quantized[:, :, 1::2, :]
+        elif mode_step == "non_anchor":
+            y_decode[:, :, 0::2, 1::2] = quantized[:, :, 0::2, :]
+            y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
+
+        return strings, y_decode
 
     def _unembed(self, y):
         anchor = torch.zeros_like(y).to(y.device)
