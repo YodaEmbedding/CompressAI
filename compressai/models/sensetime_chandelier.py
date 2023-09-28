@@ -447,24 +447,15 @@ class TestModel(CompressionModel):
                 slice_index, support, ctx_params_anchor_split[slice_index], device
             )
 
-            y_anchor = y_slices[slice_index].clone()
-            y_anchor_encode = torch.zeros(encode_shape).to(device)
-            y_anchor_encode[:, :, 0::2, :] = y_anchor[:, :, 0::2, 0::2]
-            y_anchor_encode[:, :, 1::2, :] = y_anchor[:, :, 1::2, 1::2]
-
-            indexes_anchor = self.gaussian_conditional.build_indexes(
-                scales_anchor_encode
+            anchor_strings, y_anchor_decode = self._checkerboard_decode_compress(
+                y_slices[slice_index].clone(),
+                means_anchor_encode,
+                scales_anchor_encode,
+                encode_shape,
+                decode_shape,
+                device,
+                mode="anchor",
             )
-            anchor_strings = self.gaussian_conditional.compress(
-                y_anchor_encode, indexes_anchor, means=means_anchor_encode
-            )
-            anchor_quantized = self.gaussian_conditional.decompress(
-                anchor_strings, indexes_anchor, means=means_anchor_encode
-            )
-
-            y_anchor_decode = torch.zeros(decode_shape).to(device)
-            y_anchor_decode[:, :, 0::2, 0::2] = anchor_quantized[:, :, 0::2, :]
-            y_anchor_decode[:, :, 1::2, 1::2] = anchor_quantized[:, :, 1::2, :]
 
             ### checkboard process 2
             masked_context = self.context_prediction[slice_index](y_anchor_decode)
@@ -476,33 +467,20 @@ class TestModel(CompressionModel):
                 slice_index, support, masked_context, device
             )
 
-            non_anchor = y_slices[slice_index].clone()
-            y_non_anchor_encode = torch.zeros(encode_shape).to(device)
-            y_non_anchor_encode[:, :, 0::2, :] = non_anchor[:, :, 0::2, 1::2]
-            y_non_anchor_encode[:, :, 1::2, :] = non_anchor[:, :, 1::2, 0::2]
-
-            indexes_non_anchor = self.gaussian_conditional.build_indexes(
-                scales_non_anchor_encode
-            )
-            non_anchor_strings = self.gaussian_conditional.compress(
-                y_non_anchor_encode, indexes_non_anchor, means=means_non_anchor_encode
-            )
-
-            non_anchor_quantized = self.gaussian_conditional.decompress(
-                non_anchor_strings, indexes_non_anchor, means=means_non_anchor_encode
+            (
+                non_anchor_strings,
+                y_non_anchor_decode,
+            ) = self._checkerboard_decode_compress(
+                y_slices[slice_index].clone(),
+                means_non_anchor_encode,
+                scales_non_anchor_encode,
+                encode_shape,
+                decode_shape,
+                device,
+                mode="non_anchor",
             )
 
-            y_non_anchor_quantized = torch.zeros_like(y_anchor_decode)
-            y_non_anchor_quantized[:, :, 0::2, 1::2] = non_anchor_quantized[
-                :, :, 0::2, :
-            ]
-            y_non_anchor_quantized[:, :, 1::2, 0::2] = non_anchor_quantized[
-                :, :, 1::2, :
-            ]
-
-            y_slice_hat = y_anchor_decode + y_non_anchor_quantized
-            y_hat_slices.append(y_slice_hat)
-
+            y_hat_slices.append(y_anchor_decode + y_non_anchor_decode)
             y_strings.append([anchor_strings, non_anchor_strings])
 
         # Flatten for interface compatibility:
@@ -561,6 +539,43 @@ class TestModel(CompressionModel):
         scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
 
         return means_encode, scales_encode
+
+    def _checkerboard_decode_compress(
+        self,
+        y,
+        means_encode,
+        scales_encode,
+        encode_shape,
+        decode_shape,
+        device,
+        mode,
+    ):
+        y_encode = torch.zeros(encode_shape).to(device)
+        y_decode = torch.zeros(decode_shape).to(device)
+
+        if mode == "anchor":
+            y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
+            y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
+            y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
+
+        indexes = self.gaussian_conditional.build_indexes(scales_encode)
+        strings = self.gaussian_conditional.compress(
+            y_encode, indexes, means=means_encode
+        )
+        quantized = self.gaussian_conditional.decompress(
+            strings, indexes, means=means_encode
+        )
+
+        if mode == "anchor":
+            y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
+            y_decode[:, :, 1::2, 1::2] = quantized[:, :, 1::2, :]
+        elif mode == "non_anchor":
+            y_decode[:, :, 0::2, 1::2] = quantized[:, :, 0::2, :]
+            y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
+
+        return strings, y_decode
 
     def decompress(self, strings, shape, **kwargs):
         # Interface compatibility (strings should be list[list[str]]):
