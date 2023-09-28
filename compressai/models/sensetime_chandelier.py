@@ -698,29 +698,29 @@ class TestModel(CompressionModel):
     def _checkerboard_codec_step(
         self, y_input, slice_index, support, ctx_params, device, mode_codec, mode_step
     ):
-        means, scales = self.ParamAggregation[slice_index](
+        means_new, scales_new = self.ParamAggregation[slice_index](
             torch.concat([ctx_params, support], dim=1)
         ).chunk(2, 1)
 
-        decode_shape = means.shape
+        decode_shape = means_new.shape
         B, C, H, W = decode_shape
         encode_shape = (B, C, H, W // 2)
 
-        means_encode = torch.zeros(encode_shape).to(device)
-        scales_encode = torch.zeros(encode_shape).to(device)
+        means = torch.zeros(encode_shape).to(device)
+        scales = torch.zeros(encode_shape).to(device)
 
         if mode_step == "anchor":
-            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
-            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
-            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
-            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
+            means[:, :, 0::2, :] = means_new[:, :, 0::2, 0::2]
+            means[:, :, 1::2, :] = means_new[:, :, 1::2, 1::2]
+            scales[:, :, 0::2, :] = scales_new[:, :, 0::2, 0::2]
+            scales[:, :, 1::2, :] = scales_new[:, :, 1::2, 1::2]
         elif mode_step == "non_anchor":
-            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
-            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
-            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
-            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
+            means[:, :, 0::2, :] = means_new[:, :, 0::2, 1::2]
+            means[:, :, 1::2, :] = means_new[:, :, 1::2, 0::2]
+            scales[:, :, 0::2, :] = scales_new[:, :, 0::2, 1::2]
+            scales[:, :, 1::2, :] = scales_new[:, :, 1::2, 0::2]
 
-        indexes = self.gaussian_conditional.build_indexes(scales_encode)
+        indexes = self.gaussian_conditional.build_indexes(scales)
 
         if mode_codec == "compress":
             y = y_input
@@ -733,17 +733,12 @@ class TestModel(CompressionModel):
                 y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
                 y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
 
-            strings = self.gaussian_conditional.compress(
-                y_encode, indexes, means=means_encode
-            )
+            strings = self.gaussian_conditional.compress(y_encode, indexes, means=means)
 
         elif mode_codec == "decompress":
             strings = y_input
 
-        quantized = self.gaussian_conditional.decompress(
-            strings, indexes, means=means_encode
-        )
-
+        quantized = self.gaussian_conditional.decompress(strings, indexes, means=means)
         y_decode = torch.zeros(decode_shape).to(device)
 
         if mode_step == "anchor":
