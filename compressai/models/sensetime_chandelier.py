@@ -271,32 +271,31 @@ class TestModel(CompressionModel):
 
     def forward(self, x, mode_quant="ste"):
         y = self.g_a(x)
-        B, C, H, W = y.shape
-
         z = self.h_a(y)
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
+
         if mode_quant == "ste":
             z_offset = self.entropy_bottleneck._get_medians()
-            z_tmp = z - z_offset
-            z_hat = ste_round(z_tmp) + z_offset
+            z_hat = ste_round(z - z_offset) + z_offset
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        anchor, non_anchor = self._unembed(y)
-
-        anchor_split = torch.split(anchor, self.groups[1:], 1)
-        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+        B, C, H, W = y.shape
+        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
+        ctx_params_anchor_split = torch.split(
+            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+        )
 
         y_slices = torch.split(y, self.groups[1:], 1)
-        ctx_params_anchor_split = torch.split(
-            torch.zeros(B, C * 2, H, W).to(x.device),
-            [2 * i for i in self.groups[1:]],
-            1,
-        )
+
+        anchor, non_anchor = self._unembed(y)
+        anchor_split = torch.split(anchor, self.groups[1:], 1)
+        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
 
         y_likelihood = []
         y_hat_slices = []
         y_hat_slices_for_gs = []
+
         for slice_index, y_slice in enumerate(y_slices):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
@@ -358,7 +357,6 @@ class TestModel(CompressionModel):
         y_enc_start = time.time()
         y = self.g_a(x)
         y_enc = time.time() - y_enc_start
-        B, C, H, W = y.size()  ## The shape of y to generate the mask
 
         z_enc_start = time.time()
         z = self.h_a(y)
@@ -370,23 +368,25 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        y_slices = torch.split(y, self.groups[1:], 1)
+        B, C, H, W = y.shape
+        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
         ctx_params_anchor_split = torch.split(
-            torch.zeros(B, C * 2, H, W).to(x.device),
-            [2 * i for i in self.groups[1:]],
-            1,
+            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
         )
+
+        y_slices = torch.split(y, self.groups[1:], 1)
 
         y_strings = []
         y_hat_slices = []
         params_start = time.time()
+
         for slice_index, y_slice in enumerate(y_slices):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
 
             y_hat_i, y_strings_i = self._checkerboard_codec(
-                [y_slices[slice_index].clone(), y_slices[slice_index].clone()],
+                [y_slice.clone(), y_slice.clone()],
                 slice_index,
                 support,
                 ctx_params_anchor_split,
@@ -396,9 +396,10 @@ class TestModel(CompressionModel):
             y_hat_slices.append(y_hat_i)
             y_strings.append(y_strings_i)
 
+        params_time = time.time() - params_start
+
         strings = [y_strings, z_strings]
 
-        params_time = time.time() - params_start
         return {
             "strings": strings,
             "shape": z.size()[-2:],
@@ -432,6 +433,7 @@ class TestModel(CompressionModel):
         )
 
         y_hat_slices = []
+
         for slice_index in range(len(self.groups) - 1):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
@@ -455,39 +457,41 @@ class TestModel(CompressionModel):
 
         return {"x_hat": x_hat, "time": {"y_dec": y_dec}}
 
-    def inference(self, x):
+    def inference(self, x, mode_quant="ste"):
         y_enc_start = time.time()
         y = self.g_a(x)
         y_enc = time.time() - y_enc_start
-        B, C, H, W = y.size()  ## The shape of y to generate the mask
 
         z_enc_start = time.time()
         z = self.h_a(y)
         z_enc = time.time() - z_enc_start
+
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        z_offset = self.entropy_bottleneck._get_medians()
-        z_tmp = z - z_offset
-        z_hat = ste_round(z_tmp) + z_offset
+
+        if mode_quant == "ste":
+            z_offset = self.entropy_bottleneck._get_medians()
+            z_hat = ste_round(z - z_offset) + z_offset
 
         z_dec_start = time.time()
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        anchor, non_anchor = self._unembed(y)
-
-        anchor_split = torch.split(anchor, self.groups[1:], 1)
-        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+        B, C, H, W = y.shape
+        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
+        ctx_params_anchor_split = torch.split(
+            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+        )
 
         y_slices = torch.split(y, self.groups[1:], 1)
-        ctx_params_anchor_split = torch.split(
-            torch.zeros(B, C * 2, H, W).to(x.device),
-            [2 * i for i in self.groups[1:]],
-            1,
-        )
+
+        anchor, non_anchor = self._unembed(y)
+        anchor_split = torch.split(anchor, self.groups[1:], 1)
+        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
 
         y_likelihood = []
         y_hat_slices = []
         params_start = time.time()
+
         for slice_index, y_slice in enumerate(y_slices):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
@@ -501,7 +505,7 @@ class TestModel(CompressionModel):
                 slice_index,
                 support,
                 ctx_params_anchor_split,
-                mode_quant="ste",
+                mode_quant=mode_quant,
             )
 
             y_hat_slices.append(y_hat_i)
@@ -519,6 +523,7 @@ class TestModel(CompressionModel):
         y_dec_start = time.time()
         x_hat = self.g_s(y_hat)
         y_dec = time.time() - y_dec_start
+
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
