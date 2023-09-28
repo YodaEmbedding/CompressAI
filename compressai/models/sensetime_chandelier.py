@@ -390,7 +390,6 @@ class TestModel(CompressionModel):
                 slice_index,
                 support,
                 ctx_params_anchor_split,
-                x.device,
                 mode="compress",
             )
 
@@ -454,7 +453,6 @@ class TestModel(CompressionModel):
                 slice_index,
                 support,
                 ctx_params_anchor_split,
-                z_hat.device,
                 mode="decompress",
             )
 
@@ -576,12 +574,12 @@ class TestModel(CompressionModel):
         return torch.concat(support, dim=1)
 
     def _checkerboard_forward(
-        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode_quant
+        self, y_input, slice_index, support, ctx_params_anchor_split, mode_quant
     ):
         y_anchor, y_non_anchor = y_input
 
-        means = torch.zeros_like(y_anchor).to(device)
-        scales = torch.zeros_like(y_anchor).to(device)
+        means = torch.zeros_like(y_anchor).to(y_anchor.device)
+        scales = torch.zeros_like(y_anchor).to(y_anchor.device)
 
         y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
             y_anchor,
@@ -644,7 +642,7 @@ class TestModel(CompressionModel):
         return y_hat, y_hat_for_gs
 
     def _checkerboard_codec(
-        self, y_input, slice_index, support, ctx_params_anchor_split, device, mode
+        self, y_input, slice_index, support, ctx_params_anchor_split, mode
     ):
         y_anchor_input, y_non_anchor_input = y_input
 
@@ -653,7 +651,6 @@ class TestModel(CompressionModel):
             slice_index,
             support,
             ctx_params=ctx_params_anchor_split[slice_index],
-            device=device,
             mode_codec=mode,
             mode_step="anchor",
         )
@@ -663,7 +660,6 @@ class TestModel(CompressionModel):
             slice_index,
             support,
             ctx_params=self.context_prediction[slice_index](y_anchor_hat),
-            device=device,
             mode_codec=mode,
             mode_step="non_anchor",
         )
@@ -674,12 +670,13 @@ class TestModel(CompressionModel):
         return y_hat, y_strings
 
     def _checkerboard_codec_step(
-        self, y_input, slice_index, support, ctx_params, device, mode_codec, mode_step
+        self, y_input, slice_index, support, ctx_params, mode_codec, mode_step
     ):
         means_new, scales_new = self.ParamAggregation[slice_index](
             torch.concat([ctx_params, support], dim=1)
         ).chunk(2, 1)
 
+        device = means_new.device
         decode_shape = means_new.shape
         B, C, H, W = decode_shape
         encode_shape = (B, C, H, W // 2)
