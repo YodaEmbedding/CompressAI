@@ -438,13 +438,15 @@ class TestModel(CompressionModel):
             )
 
             ### checkboard process 1
+            ctx_params = ctx_params_anchor_split[slice_index]
+
             (
                 means_anchor_encode,
                 scales_anchor_encode,
                 encode_shape,
                 decode_shape,
-            ) = self._checkerboard_anchor_compress(
-                slice_index, support, ctx_params_anchor_split[slice_index], device
+            ) = self._checkerboard_encode(
+                slice_index, support, ctx_params, device, mode="anchor"
             )
 
             anchor_strings, y_anchor_decode = self._checkerboard_decode_compress(
@@ -463,8 +465,10 @@ class TestModel(CompressionModel):
             (
                 means_non_anchor_encode,
                 scales_non_anchor_encode,
-            ) = self._checkerboard_non_anchor_compress(
-                slice_index, support, masked_context, device
+                encode_shape,
+                decode_shape,
+            ) = self._checkerboard_encode(
+                slice_index, support, masked_context, device, mode="non_anchor"
             )
 
             (
@@ -500,7 +504,7 @@ class TestModel(CompressionModel):
             },
         }
 
-    def _checkerboard_anchor_compress(self, slice_index, support, ctx_params, device):
+    def _checkerboard_encode(self, slice_index, support, ctx_params, device, mode):
         means, scales = self.ParamAggregation[slice_index](
             torch.concat([ctx_params, support], dim=1)
         ).chunk(2, 1)
@@ -512,33 +516,18 @@ class TestModel(CompressionModel):
         means_encode = torch.zeros(encode_shape).to(device)
         scales_encode = torch.zeros(encode_shape).to(device)
 
-        means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
-        means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
-        scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
-        scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
+        if mode == "anchor":
+            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 0::2]
+            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 1::2]
+            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 0::2]
+            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
+            means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
+            scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
+            scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
 
         return means_encode, scales_encode, encode_shape, decode_shape
-
-    def _checkerboard_non_anchor_compress(
-        self, slice_index, support, ctx_params, device
-    ):
-        means, scales = self.ParamAggregation[slice_index](
-            torch.concat([ctx_params, support], dim=1)
-        ).chunk(2, 1)
-
-        decode_shape = means.shape
-        B, C, H, W = decode_shape
-        encode_shape = (B, C, H, W // 2)
-
-        means_encode = torch.zeros(encode_shape).to(device)
-        scales_encode = torch.zeros(encode_shape).to(device)
-
-        means_encode[:, :, 0::2, :] = means[:, :, 0::2, 1::2]
-        means_encode[:, :, 1::2, :] = means[:, :, 1::2, 0::2]
-        scales_encode[:, :, 0::2, :] = scales[:, :, 0::2, 1::2]
-        scales_encode[:, :, 1::2, :] = scales[:, :, 1::2, 0::2]
-
-        return means_encode, scales_encode
 
     def _checkerboard_decode_compress(
         self,
@@ -634,13 +623,15 @@ class TestModel(CompressionModel):
             )
 
             ### checkboard process 1
+            ctx_params = ctx_params_anchor_split[slice_index]
+
             (
                 means_anchor_encode,
                 scales_anchor_encode,
                 encode_shape,
                 decode_shape,
-            ) = self._checkerboard_anchor_compress(
-                slice_index, support, ctx_params_anchor_split[slice_index], device
+            ) = self._checkerboard_encode(
+                slice_index, support, ctx_params, device, mode="anchor"
             )
 
             y_anchor_decode = self._checkerboard_decode_decompress(
@@ -658,8 +649,10 @@ class TestModel(CompressionModel):
             (
                 means_non_anchor_encode,
                 scales_non_anchor_encode,
-            ) = self._checkerboard_non_anchor_compress(
-                slice_index, support, masked_context, device
+                encode_shape,
+                decode_shape,
+            ) = self._checkerboard_encode(
+                slice_index, support, masked_context, device, mode="non_anchor"
             )
 
             y_non_anchor_decode = self._checkerboard_decode_decompress(
