@@ -491,58 +491,29 @@ class TestModel(CompressionModel):
             support = self._calculate_support(
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
-            ### checkboard process 1
-            y_anchor = anchor_split[slice_index]
-            params = self.ParamAggregation[slice_index](
-                torch.concat([ctx_params_anchor_split[slice_index], support], dim=1)
-            )
-            means_anchor, scales_anchor = params.chunk(2, 1)
 
+            y_anchor = anchor_split[slice_index]
+            y_non_anchor = non_anchor_split[slice_index]
             scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
             means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
-            scales_hat_split[:, :, 0::2, 0::2] = scales_anchor[:, :, 0::2, 0::2]
-            scales_hat_split[:, :, 1::2, 1::2] = scales_anchor[:, :, 1::2, 1::2]
-            means_hat_split[:, :, 0::2, 0::2] = means_anchor[:, :, 0::2, 0::2]
-            means_hat_split[:, :, 1::2, 1::2] = means_anchor[:, :, 1::2, 1::2]
-
-            y_anchor_quantilized_for_gs = (
-                self.quantizer.quantize(y_anchor - means_anchor, "ste") + means_anchor
+            y_hat_i, _ = self._checkerboard_forward(
+                [y_anchor, y_non_anchor],
+                slice_index,
+                support,
+                means_hat_split,
+                scales_hat_split,
+                ctx_params_anchor_split,
+                noisequant=False,
             )
 
-            y_anchor_quantilized_for_gs[:, :, 0::2, 1::2] = 0
-            y_anchor_quantilized_for_gs[:, :, 1::2, 0::2] = 0
+            y_hat_slices.append(y_hat_i)
+            # y_hat_slices_for_gs.append(y_hat_for_gs_i)
 
-            ### checkboard process 2
-            masked_context = self.context_prediction[slice_index](
-                y_anchor_quantilized_for_gs
-            )
-            params = self.ParamAggregation[slice_index](
-                torch.concat([masked_context, support], dim=1)
-            )
-            means_non_anchor, scales_non_anchor = params.chunk(2, 1)
-
-            scales_hat_split[:, :, 0::2, 1::2] = scales_non_anchor[:, :, 0::2, 1::2]
-            scales_hat_split[:, :, 1::2, 0::2] = scales_non_anchor[:, :, 1::2, 0::2]
-            means_hat_split[:, :, 0::2, 1::2] = means_non_anchor[:, :, 0::2, 1::2]
-            means_hat_split[:, :, 1::2, 0::2] = means_non_anchor[:, :, 1::2, 0::2]
             # entropy estimation
             _, y_slice_likelihood = self.gaussian_conditional(
                 y_slice, scales_hat_split, means=means_hat_split
             )
-
-            y_non_anchor = non_anchor_split[slice_index]
-
-            y_non_anchor_quantilized_for_gs = (
-                self.quantizer.quantize(y_non_anchor - means_non_anchor, "ste")
-                + means_non_anchor
-            )
-            y_non_anchor_quantilized_for_gs[:, :, 0::2, 0::2] = 0
-            y_non_anchor_quantilized_for_gs[:, :, 1::2, 1::2] = 0
-
-            y_hat_slice = y_anchor_quantilized_for_gs + y_non_anchor_quantilized_for_gs
-            y_hat_slices.append(y_hat_slice)
-            ### ste for synthesis model
             y_likelihood.append(y_slice_likelihood)
 
         params_time = time.time() - params_start
