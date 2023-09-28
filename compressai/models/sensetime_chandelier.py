@@ -276,30 +276,18 @@ class TestModel(CompressionModel):
             scales_hat_split = torch.zeros_like(y_anchor).to(x.device)
             means_hat_split = torch.zeros_like(y_anchor).to(x.device)
 
-            y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
-                y_anchor,
+            y_hat_i, y_hat_for_gs_i = self._checkerboard_forward(
+                [y_anchor, y_non_anchor],
                 slice_index,
                 support,
                 means_hat_split,
                 scales_hat_split,
-                ctx_params=ctx_params_anchor_split[slice_index],
+                ctx_params_anchor_split,
                 noisequant=noisequant,
-                mode="anchor",
             )
 
-            y_non_anchor_hat, y_non_anchor_hat_for_gs = self._checkerboard_forward_step(
-                y_non_anchor,
-                slice_index,
-                support,
-                means_hat_split,
-                scales_hat_split,
-                ctx_params=self.context_prediction[slice_index](y_anchor_hat),
-                noisequant=noisequant,
-                mode="non_anchor",
-            )
-
-            y_hat_slices.append(y_anchor_hat + y_non_anchor_hat)
-            y_hat_slices_for_gs.append(y_anchor_hat_for_gs + y_non_anchor_hat_for_gs)
+            y_hat_slices.append(y_hat_i)
+            y_hat_slices_for_gs.append(y_hat_for_gs_i)
 
             # entropy estimation
             _, y_slice_likelihood = self.gaussian_conditional(
@@ -318,6 +306,45 @@ class TestModel(CompressionModel):
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
+
+    def _checkerboard_forward(
+        self,
+        y_input,
+        slice_index,
+        support,
+        means,
+        scales,
+        ctx_params_anchor_split,
+        noisequant,
+    ):
+        y_anchor, y_non_anchor = y_input
+
+        y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
+            y_anchor,
+            slice_index,
+            support,
+            means,
+            scales,
+            ctx_params=ctx_params_anchor_split[slice_index],
+            noisequant=noisequant,
+            mode="anchor",
+        )
+
+        y_non_anchor_hat, y_non_anchor_hat_for_gs = self._checkerboard_forward_step(
+            y_non_anchor,
+            slice_index,
+            support,
+            means,
+            scales,
+            ctx_params=self.context_prediction[slice_index](y_anchor_hat),
+            noisequant=noisequant,
+            mode="non_anchor",
+        )
+
+        y_hat = y_anchor_hat + y_non_anchor_hat
+        y_hat_for_gs = y_anchor_hat_for_gs + y_non_anchor_hat_for_gs
+
+        return y_hat, y_hat_for_gs
 
     def _checkerboard_forward_step(
         self, y, slice_index, support, means, scales, ctx_params, noisequant, mode
