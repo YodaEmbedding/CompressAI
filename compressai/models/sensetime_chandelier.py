@@ -449,14 +449,14 @@ class TestModel(CompressionModel):
                 slice_index, support, ctx_params, device, mode="anchor"
             )
 
-            anchor_strings, y_anchor_decode = self._checkerboard_decode_compress(
+            anchor_strings, y_anchor_decode = self._checkerboard_decode(
                 y_slices[slice_index].clone(),
                 means_anchor_encode,
                 scales_anchor_encode,
                 encode_shape,
                 decode_shape,
                 device,
-                mode="anchor",
+                mode="anchor,compress",
             )
 
             ### checkboard process 2
@@ -474,14 +474,14 @@ class TestModel(CompressionModel):
             (
                 non_anchor_strings,
                 y_non_anchor_decode,
-            ) = self._checkerboard_decode_compress(
+            ) = self._checkerboard_decode(
                 y_slices[slice_index].clone(),
                 means_non_anchor_encode,
                 scales_non_anchor_encode,
                 encode_shape,
                 decode_shape,
                 device,
-                mode="non_anchor",
+                mode="non_anchor,compress",
             )
 
             y_hat_slices.append(y_anchor_decode + y_non_anchor_decode)
@@ -529,9 +529,9 @@ class TestModel(CompressionModel):
 
         return means_encode, scales_encode, encode_shape, decode_shape
 
-    def _checkerboard_decode_compress(
+    def _checkerboard_decode(
         self,
-        y,
+        input,  # y or strings
         means_encode,
         scales_encode,
         encode_shape,
@@ -539,23 +539,33 @@ class TestModel(CompressionModel):
         device,
         mode,
     ):
-        y_encode = torch.zeros(encode_shape).to(device)
-        y_decode = torch.zeros(decode_shape).to(device)
-
-        if mode == "anchor":
-            y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
-            y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
-        elif mode == "non_anchor":
-            y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
-            y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
+        [mode, mode2] = mode.split(",")
 
         indexes = self.gaussian_conditional.build_indexes(scales_encode)
-        strings = self.gaussian_conditional.compress(
-            y_encode, indexes, means=means_encode
-        )
+
+        if mode2 == "compress":
+            y = input
+            y_encode = torch.zeros(encode_shape).to(device)
+
+            if mode == "anchor":
+                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
+                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
+            elif mode == "non_anchor":
+                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
+                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
+
+            strings = self.gaussian_conditional.compress(
+                y_encode, indexes, means=means_encode
+            )
+
+        elif mode2 == "decompress":
+            strings = input
+
         quantized = self.gaussian_conditional.decompress(
             strings, indexes, means=means_encode
         )
+
+        y_decode = torch.zeros(decode_shape).to(device)
 
         if mode == "anchor":
             y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
@@ -565,25 +575,6 @@ class TestModel(CompressionModel):
             y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
 
         return strings, y_decode
-
-    def _checkerboard_decode_decompress(
-        self, strings, means_encode, scales_encode, decode_shape, device, mode
-    ):
-        indexes = self.gaussian_conditional.build_indexes(scales_encode)
-        quantized = self.gaussian_conditional.decompress(
-            strings, indexes, means=means_encode
-        )
-
-        y_decode = torch.zeros(decode_shape).to(device)
-
-        if mode == "anchor":
-            y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 1::2] = quantized[:, :, 1::2, :]
-        elif mode == "non_anchor":
-            y_decode[:, :, 0::2, 1::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
-
-        return y_decode
 
     def decompress(self, strings, shape, **kwargs):
         # Interface compatibility (strings should be list[list[str]]):
@@ -634,13 +625,13 @@ class TestModel(CompressionModel):
                 slice_index, support, ctx_params, device, mode="anchor"
             )
 
-            y_anchor_decode = self._checkerboard_decode_decompress(
+            _, y_anchor_decode = self._checkerboard_decode(
                 y_strings[slice_index][0],
                 means_anchor_encode,
                 scales_anchor_encode,
                 decode_shape,
                 device,
-                mode="anchor",
+                mode="anchor,decompress",
             )
 
             ### checkboard process 2
@@ -655,13 +646,13 @@ class TestModel(CompressionModel):
                 slice_index, support, masked_context, device, mode="non_anchor"
             )
 
-            y_non_anchor_decode = self._checkerboard_decode_decompress(
+            _, y_non_anchor_decode = self._checkerboard_decode(
                 y_strings[slice_index][1],
                 means_non_anchor_encode,
                 scales_non_anchor_encode,
                 decode_shape,
                 device,
-                mode="non_anchor",
+                mode="non_anchor,decompress",
             )
 
             y_hat_slices.append(y_anchor_decode + y_non_anchor_decode)
