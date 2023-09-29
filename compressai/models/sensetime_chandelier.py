@@ -206,7 +206,7 @@ class TestModel(CompressionModel):
             nn.Sequential(
                 conv(
                     # Input: first group, and most recently decoded group.
-                    self.groups[1] + self.groups[i if i > 1 else 0],
+                    self.groups[1] + (i > 1) * self.groups[i],
                     224,
                     stride=1,
                     kernel_size=5,
@@ -230,7 +230,7 @@ class TestModel(CompressionModel):
             nn.Sequential(
                 conv1x1(
                     # Input: spatial context, channel context, and hyper params.
-                    self.groups[i] * 2 + self.groups[i if i > 1 else 0] * 2 + M * 2,
+                    self.groups[i] * 2 + (i > 1) * self.groups[i] * 2 + M * 2,
                     M * 2,
                 ),
                 nn.ReLU(inplace=True),
