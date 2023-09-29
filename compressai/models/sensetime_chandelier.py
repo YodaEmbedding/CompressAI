@@ -117,12 +117,11 @@ class TestModel(CompressionModel):
 
         .. note::
 
-            This implementation contains some differences compared to
-            the original [He2022] paper. For instance, the implemented
-            context model only uses the first and the previously decoded
-            channel groups to predict the current channel group. In
-            contrast, the original paper uses all previously decoded
-            channel groups.
+            This implementation contains some differences compared to the
+            original [He2022] paper. For instance, the implemented context
+            model only uses the first and the most recently decoded channel
+            groups to predict the current channel group. In contrast, the
+            original paper uses all previously decoded channel groups.
 
         [He2022]: `"ELIC: Efficient Learned Image Compression with
         Unevenly Grouped Space-Channel Contextual Adaptive Coding"
@@ -206,8 +205,8 @@ class TestModel(CompressionModel):
         self.cc_transforms = nn.ModuleList(
             nn.Sequential(
                 conv(
-                    self.groups[min(1, i) if i > 0 else 0]
-                    + self.groups[i if i > 1 else 0],
+                    # Input: first group, and most recently decoded group.
+                    self.groups[1] + self.groups[i if i > 1 else 0],
                     224,
                     stride=1,
                     kernel_size=5,
@@ -222,29 +221,24 @@ class TestModel(CompressionModel):
 
         self.context_prediction = nn.ModuleList(
             CheckboardMaskedConv2d(
-                self.groups[i + 1],
-                2 * self.groups[i + 1],
-                kernel_size=5,
-                padding=2,
-                stride=1,
+                self.groups[i], self.groups[i] * 2, kernel_size=5, padding=2, stride=1
             )
-            for i in range(num_slices)
+            for i in range(1, num_slices + 1)
         )  ## from https://github.com/JiangWeibeta/Checkerboard-Context-Model-for-Efficient-Learned-Image-Compression/blob/main/version2/layers/CheckerboardContext.py
 
         self.ParamAggregation = nn.ModuleList(
             nn.Sequential(
                 conv1x1(
-                    M * 2
-                    + self.groups[i + 1 if i > 0 else 0] * 2
-                    + self.groups[i + 1] * 2,
+                    # Input: spatial context, channel context, and hyper params.
+                    self.groups[i] * 2 + self.groups[i if i > 1 else 0] * 2 + M * 2,
                     M * 2,
                 ),
                 nn.ReLU(inplace=True),
                 conv1x1(M * 2, 512),
                 nn.ReLU(inplace=True),
-                conv1x1(512, self.groups[i + 1] * 2),
+                conv1x1(512, self.groups[i] * 2),
             )
-            for i in range(num_slices)
+            for i in range(1, num_slices + 1)
         )  ##from checkboard "Checkerboard Context Model for Efficient Learned Image Compression"" gep网络参数
 
         self.quantizer = Quantizer()
