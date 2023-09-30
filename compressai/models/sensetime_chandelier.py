@@ -274,14 +274,15 @@ class TestModel(CompressionModel):
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        y_slices = torch.split(y, self.groups[1:], 1)
-
+        # Extract anchor and non-anchors for each channel group:
         anchor = torch.zeros_like(y)
         non_anchor = torch.zeros_like(y)
         self._copy(anchor, y, "anchor")
         self._copy(non_anchor, y, "non_anchor")
-        anchor_split = torch.split(anchor, self.groups[1:], 1)
-        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+        anchor_split = torch.split(anchor, self.groups[1:], dim=1)
+        non_anchor_split = torch.split(non_anchor, self.groups[1:], dim=1)
+
+        y_slices = torch.split(y, self.groups[1:], dim=1)
 
         y_likelihood = []
         y_hat_slices = []
@@ -350,7 +351,7 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        y_slices = torch.split(y, self.groups[1:], 1)
+        y_slices = torch.split(y, self.groups[1:], dim=1)
 
         y_strings = []
         y_hat_slices = []
@@ -391,12 +392,8 @@ class TestModel(CompressionModel):
         assert isinstance(strings, list) and len(strings) == 2
         [y_strings, z_strings] = strings
 
-        # FIXME: we don't respect the default entropy coder and directly call thse
-        # range ANS decoder
-
         z_hat = self.entropy_bottleneck.decompress(z_strings, shape)
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
-
         y_hat_slices = []
 
         for slice_index in range(len(self.groups) - 1):
@@ -441,14 +438,15 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        y_slices = torch.split(y, self.groups[1:], 1)
-
+        # Extract anchor and non-anchors for each channel group:
         anchor = torch.zeros_like(y)
         non_anchor = torch.zeros_like(y)
         self._copy(anchor, y, "anchor")
         self._copy(non_anchor, y, "non_anchor")
-        anchor_split = torch.split(anchor, self.groups[1:], 1)
-        non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
+        anchor_split = torch.split(anchor, self.groups[1:], dim=1)
+        non_anchor_split = torch.split(non_anchor, self.groups[1:], dim=1)
+
+        y_slices = torch.split(y, self.groups[1:], dim=1)
 
         y_likelihood = []
         y_hat_slices = []
