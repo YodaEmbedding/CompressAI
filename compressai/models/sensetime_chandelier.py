@@ -275,7 +275,7 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
+        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
         )
@@ -358,7 +358,7 @@ class TestModel(CompressionModel):
         z_dec = time.time() - z_dec_start
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
+        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
         )
@@ -415,8 +415,8 @@ class TestModel(CompressionModel):
         y_strings = strings[0]
 
         ctx_params_anchor = torch.zeros(
-            (B, self.M * 2, z_hat.shape[2] * 4, z_hat.shape[3] * 4)
-        ).to(z_hat.device)
+            (B, self.M * 2, z_hat.shape[2] * 4, z_hat.shape[3] * 4), device=z_hat.device
+        )
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], 1
         )
@@ -466,7 +466,7 @@ class TestModel(CompressionModel):
         z_dec = time.time() - z_dec_start
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros(B, C * 2, H, W).to(x.device)
+        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
             ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
         )
@@ -640,8 +640,8 @@ class TestModel(CompressionModel):
         B, C, H, W = decode_shape
         encode_shape = (B, C, H, W // 2)
 
-        means = torch.zeros(encode_shape).to(device)
-        scales = torch.zeros(encode_shape).to(device)
+        means = torch.zeros(encode_shape, device=device)
+        scales = torch.zeros(encode_shape, device=device)
         self._unembed(means, means_new, mode_step)
         self._unembed(scales, scales_new, mode_step)
 
@@ -649,7 +649,7 @@ class TestModel(CompressionModel):
 
         if mode_codec == "compress":
             y = y_input
-            y_encode = torch.zeros(encode_shape).to(device)
+            y_encode = torch.zeros(encode_shape, device=device)
             self._unembed(y_encode, y, mode_step)
             strings = self.gaussian_conditional.compress(y_encode, indexes, means=means)
 
@@ -657,7 +657,7 @@ class TestModel(CompressionModel):
             strings = y_input
 
         quantized = self.gaussian_conditional.decompress(strings, indexes, means=means)
-        y_decode = torch.zeros(decode_shape).to(device)
+        y_decode = torch.zeros(decode_shape, device=device)
         self._embed(y_decode, quantized, mode_step)
 
         return strings, y_decode
