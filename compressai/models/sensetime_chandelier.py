@@ -275,9 +275,10 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
-            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+            torch.zeros((B, C * 2, H, W), device=x.device),
+            [2 * g for g in self.groups[1:]],
+            dim=1,
         )
 
         y_slices = torch.split(y, self.groups[1:], 1)
@@ -358,9 +359,10 @@ class TestModel(CompressionModel):
         z_dec = time.time() - z_dec_start
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
-            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+            torch.zeros((B, C * 2, H, W), device=x.device),
+            [2 * g for g in self.groups[1:]],
+            dim=1,
         )
 
         y_slices = torch.split(y, self.groups[1:], 1)
@@ -415,9 +417,10 @@ class TestModel(CompressionModel):
         H = z_hat.shape[2] * 4
         W = z_hat.shape[3] * 4
 
-        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=z_hat.device)
         ctx_params_anchor_split = torch.split(
-            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+            torch.zeros((B, C * 2, H, W), device=z_hat.device),
+            [2 * g for g in self.groups[1:]],
+            dim=1,
         )
 
         y_hat_slices = []
@@ -465,9 +468,10 @@ class TestModel(CompressionModel):
         z_dec = time.time() - z_dec_start
 
         B, C, H, W = y.shape
-        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=x.device)
         ctx_params_anchor_split = torch.split(
-            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
+            torch.zeros((B, C * 2, H, W), device=x.device),
+            [2 * g for g in self.groups[1:]],
+            dim=1,
         )
 
         y_slices = torch.split(y, self.groups[1:], 1)
