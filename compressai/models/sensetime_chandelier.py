@@ -282,8 +282,8 @@ class TestModel(CompressionModel):
 
         y_slices = torch.split(y, self.groups[1:], 1)
 
-        anchor = torch.zeros_like(y).to(y.device)
-        non_anchor = torch.zeros_like(y).to(y.device)
+        anchor = torch.zeros_like(y)
+        non_anchor = torch.zeros_like(y)
         self._copy(anchor, y, "anchor")
         self._copy(non_anchor, y, "non_anchor")
         anchor_split = torch.split(anchor, self.groups[1:], 1)
@@ -473,8 +473,8 @@ class TestModel(CompressionModel):
 
         y_slices = torch.split(y, self.groups[1:], 1)
 
-        anchor = torch.zeros_like(y).to(y.device)
-        non_anchor = torch.zeros_like(y).to(y.device)
+        anchor = torch.zeros_like(y)
+        non_anchor = torch.zeros_like(y)
         self._copy(anchor, y, "anchor")
         self._copy(non_anchor, y, "non_anchor")
         anchor_split = torch.split(anchor, self.groups[1:], 1)
@@ -550,8 +550,8 @@ class TestModel(CompressionModel):
         y, y_anchor, y_non_anchor = y_input
         # NOTE: y == y_anchor + y_non_anchor
 
-        means = torch.zeros_like(y).to(y.device)
-        scales = torch.zeros_like(y).to(y.device)
+        means = torch.zeros_like(y)
+        scales = torch.zeros_like(y)
 
         y_anchor_hat, y_anchor_hat_for_gs = self._checkerboard_forward_step(
             y_anchor,
