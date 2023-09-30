@@ -402,23 +402,22 @@ class TestModel(CompressionModel):
 
     def decompress(self, strings, shape, **kwargs):
         assert isinstance(strings, list) and len(strings) == 2
+        [y_strings, z_strings] = strings
 
         # FIXME: we don't respect the default entropy coder and directly call thse
         # range ANS decoder
 
-        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
-        B, _, _, _ = z_hat.size()
-
+        z_hat = self.entropy_bottleneck.decompress(z_strings, shape)
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        y_shape = [z_hat.shape[2] * 4, z_hat.shape[3] * 4]
-        y_strings = strings[0]
+        B = z_hat.shape[0]
+        C = self.M
+        H = z_hat.shape[2] * 4
+        W = z_hat.shape[3] * 4
 
-        ctx_params_anchor = torch.zeros(
-            (B, self.M * 2, z_hat.shape[2] * 4, z_hat.shape[3] * 4), device=z_hat.device
-        )
+        ctx_params_anchor = torch.zeros((B, C * 2, H, W), device=z_hat.device)
         ctx_params_anchor_split = torch.split(
-            ctx_params_anchor, [2 * i for i in self.groups[1:]], 1
+            ctx_params_anchor, [2 * i for i in self.groups[1:]], dim=1
         )
 
         y_hat_slices = []
