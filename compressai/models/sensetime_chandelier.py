@@ -298,11 +298,8 @@ class TestModel(CompressionModel):
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
 
-            y_slice_anchor = anchor_split[slice_index]
-            y_slice_non_anchor = non_anchor_split[slice_index]
-
             y_hat_i, y_hat_for_gs_i, y_likelihood_i = self._checkerboard_forward(
-                [y_slice, y_slice_anchor, y_slice_non_anchor],
+                [y_slice, anchor_split[slice_index], non_anchor_split[slice_index]],
                 slice_index,
                 support,
                 ctx_params_anchor_split,
@@ -492,11 +489,8 @@ class TestModel(CompressionModel):
                 slice_index, y_hat_slices, latent_means, latent_scales
             )
 
-            y_slice_anchor = anchor_split[slice_index]
-            y_slice_non_anchor = non_anchor_split[slice_index]
-
             y_hat_i, _, y_likelihood_i = self._checkerboard_forward(
-                [y_slice, y_slice_anchor, y_slice_non_anchor],
+                [y_slice, anchor_split[slice_index], non_anchor_split[slice_index]],
                 slice_index,
                 support,
                 ctx_params_anchor_split,
