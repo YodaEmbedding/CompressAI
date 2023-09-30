@@ -274,13 +274,6 @@ class TestModel(CompressionModel):
 
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        B, C, H, W = y.shape
-        ctx_params_anchor_split = torch.split(
-            torch.zeros((B, C * 2, H, W), device=x.device),
-            [2 * g for g in self.groups[1:]],
-            dim=1,
-        )
-
         y_slices = torch.split(y, self.groups[1:], 1)
 
         anchor = torch.zeros_like(y)
@@ -303,7 +296,6 @@ class TestModel(CompressionModel):
                 [y_slice, anchor_split[slice_index], non_anchor_split[slice_index]],
                 slice_index,
                 support,
-                ctx_params_anchor_split,
                 mode_quant=mode_quant,
             )
 
@@ -358,13 +350,6 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        B, C, H, W = y.shape
-        ctx_params_anchor_split = torch.split(
-            torch.zeros((B, C * 2, H, W), device=x.device),
-            [2 * g for g in self.groups[1:]],
-            dim=1,
-        )
-
         y_slices = torch.split(y, self.groups[1:], 1)
 
         y_strings = []
@@ -380,7 +365,7 @@ class TestModel(CompressionModel):
                 [y_slice.clone(), y_slice.clone()],
                 slice_index,
                 support,
-                ctx_params_anchor_split,
+                y_shape=y.shape[-2:],
                 mode="compress",
             )
 
@@ -412,17 +397,6 @@ class TestModel(CompressionModel):
         z_hat = self.entropy_bottleneck.decompress(z_strings, shape)
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
 
-        B = z_hat.shape[0]
-        C = self.M
-        H = z_hat.shape[2] * 4
-        W = z_hat.shape[3] * 4
-
-        ctx_params_anchor_split = torch.split(
-            torch.zeros((B, C * 2, H, W), device=z_hat.device),
-            [2 * g for g in self.groups[1:]],
-            dim=1,
-        )
-
         y_hat_slices = []
 
         for slice_index in range(len(self.groups) - 1):
@@ -434,7 +408,7 @@ class TestModel(CompressionModel):
                 y_strings[slice_index],
                 slice_index,
                 support,
-                ctx_params_anchor_split,
+                y_shape=(shape[0] * 4, shape[1] * 4),
                 mode="decompress",
             )
 
@@ -467,13 +441,6 @@ class TestModel(CompressionModel):
         latent_means, latent_scales = self.h_s(z_hat).chunk(2, 1)
         z_dec = time.time() - z_dec_start
 
-        B, C, H, W = y.shape
-        ctx_params_anchor_split = torch.split(
-            torch.zeros((B, C * 2, H, W), device=x.device),
-            [2 * g for g in self.groups[1:]],
-            dim=1,
-        )
-
         y_slices = torch.split(y, self.groups[1:], 1)
 
         anchor = torch.zeros_like(y)
@@ -496,7 +463,6 @@ class TestModel(CompressionModel):
                 [y_slice, anchor_split[slice_index], non_anchor_split[slice_index]],
                 slice_index,
                 support,
-                ctx_params_anchor_split,
                 mode_quant=mode_quant,
             )
 
@@ -547,12 +513,11 @@ class TestModel(CompressionModel):
 
         return torch.concat([cc_means, cc_scales, latent_means, latent_scales], dim=1)
 
-    def _checkerboard_forward(
-        self, y_input, slice_index, support, ctx_params_anchor_split, mode_quant
-    ):
+    def _checkerboard_forward(self, y_input, slice_index, support, mode_quant):
         y, y_anchor, y_non_anchor = y_input
         # NOTE: y == y_anchor + y_non_anchor
 
+        B, C, H, W = y.shape
         means = torch.zeros_like(y)
         scales = torch.zeros_like(y)
 
@@ -562,7 +527,7 @@ class TestModel(CompressionModel):
             support,
             means,
             scales,
-            ctx_params=ctx_params_anchor_split[slice_index],
+            ctx_params=torch.zeros((B, C * 2, H, W), device=support.device),
             mode_quant=mode_quant,
             mode="anchor",
         )
@@ -603,16 +568,19 @@ class TestModel(CompressionModel):
 
         return y_hat, y_hat_for_gs
 
-    def _checkerboard_codec(
-        self, y_input, slice_index, support, ctx_params_anchor_split, mode
-    ):
+    def _checkerboard_codec(self, y_input, slice_index, support, y_shape, mode):
         y_anchor_input, y_non_anchor_input = y_input
+
+        # NOTE: y.shape == (B, C, H, W)
+        B, *_ = support.shape
+        C = self.groups[slice_index + 1]
+        H, W = y_shape
 
         anchor_strings, y_anchor_hat = self._checkerboard_codec_step(
             y_anchor_input,
             slice_index,
             support,
-            ctx_params=ctx_params_anchor_split[slice_index],
+            ctx_params=torch.zeros((B, C * 2, H, W), device=support.device),
             mode_codec=mode,
             mode_step="anchor",
         )
