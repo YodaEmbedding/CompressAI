@@ -536,19 +536,13 @@ class TestModel(CompressionModel):
         if slice_index == 0:
             return torch.concat([latent_means, latent_scales], dim=1)
 
-        support_slices_ch = self.cc_transforms[slice_index - 1](
+        cc_means, cc_scales = self.cc_transforms[slice_index - 1](
             y_hat_slices[0]
             if slice_index == 1
             else torch.concat([y_hat_slices[0], y_hat_slices[slice_index - 1]], dim=1)
-        )
-        support_slices_ch_mean, support_slices_ch_scale = support_slices_ch.chunk(2, 1)
-        support = [
-            support_slices_ch_mean,
-            support_slices_ch_scale,
-            latent_means,
-            latent_scales,
-        ]
-        return torch.concat(support, dim=1)
+        ).chunk(2, 1)
+
+        return torch.concat([cc_means, cc_scales, latent_means, latent_scales], dim=1)
 
     def _checkerboard_forward(
         self, y_input, slice_index, support, ctx_params_anchor_split, mode_quant
