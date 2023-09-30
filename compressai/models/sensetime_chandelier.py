@@ -282,7 +282,10 @@ class TestModel(CompressionModel):
 
         y_slices = torch.split(y, self.groups[1:], 1)
 
-        anchor, non_anchor = self._unembed(y)
+        anchor = torch.zeros_like(y).to(y.device)
+        non_anchor = torch.zeros_like(y).to(y.device)
+        self._copy(anchor, y, "anchor")
+        self._copy(non_anchor, y, "non_anchor")
         anchor_split = torch.split(anchor, self.groups[1:], 1)
         non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
 
@@ -478,7 +481,10 @@ class TestModel(CompressionModel):
 
         y_slices = torch.split(y, self.groups[1:], 1)
 
-        anchor, non_anchor = self._unembed(y)
+        anchor = torch.zeros_like(y).to(y.device)
+        non_anchor = torch.zeros_like(y).to(y.device)
+        self._copy(anchor, y, "anchor")
+        self._copy(non_anchor, y, "non_anchor")
         anchor_split = torch.split(anchor, self.groups[1:], 1)
         non_anchor_split = torch.split(non_anchor, self.groups[1:], 1)
 
@@ -603,29 +609,13 @@ class TestModel(CompressionModel):
             torch.concat([ctx_params, support], dim=1)
         ).chunk(2, 1)
 
-        if mode == "anchor":
-            means[:, :, 0::2, 0::2] = means_new[:, :, 0::2, 0::2]
-            means[:, :, 1::2, 1::2] = means_new[:, :, 1::2, 1::2]
-            scales[:, :, 0::2, 0::2] = scales_new[:, :, 0::2, 0::2]
-            scales[:, :, 1::2, 1::2] = scales_new[:, :, 1::2, 1::2]
-        elif mode == "non_anchor":
-            means[:, :, 0::2, 1::2] = means_new[:, :, 0::2, 1::2]
-            means[:, :, 1::2, 0::2] = means_new[:, :, 1::2, 0::2]
-            scales[:, :, 0::2, 1::2] = scales_new[:, :, 0::2, 1::2]
-            scales[:, :, 1::2, 0::2] = scales_new[:, :, 1::2, 0::2]
+        self._copy(means, means_new, mode)
+        self._copy(scales, scales_new, mode)
 
         y_hat, y_hat_for_gs = self._apply_quantizer(y, means_new, mode_quant)
 
-        if mode == "anchor":
-            y_hat[:, :, 0::2, 1::2] = 0
-            y_hat[:, :, 1::2, 0::2] = 0
-            y_hat_for_gs[:, :, 0::2, 1::2] = 0
-            y_hat_for_gs[:, :, 1::2, 0::2] = 0
-        elif mode == "non_anchor":
-            y_hat[:, :, 0::2, 0::2] = 0
-            y_hat[:, :, 1::2, 1::2] = 0
-            y_hat_for_gs[:, :, 0::2, 0::2] = 0
-            y_hat_for_gs[:, :, 1::2, 1::2] = 0
+        self._keep_only(y_hat, mode)
+        self._keep_only(y_hat_for_gs, mode)
 
         return y_hat, y_hat_for_gs
 
@@ -671,31 +661,15 @@ class TestModel(CompressionModel):
 
         means = torch.zeros(encode_shape).to(device)
         scales = torch.zeros(encode_shape).to(device)
-
-        if mode_step == "anchor":
-            means[:, :, 0::2, :] = means_new[:, :, 0::2, 0::2]
-            means[:, :, 1::2, :] = means_new[:, :, 1::2, 1::2]
-            scales[:, :, 0::2, :] = scales_new[:, :, 0::2, 0::2]
-            scales[:, :, 1::2, :] = scales_new[:, :, 1::2, 1::2]
-        elif mode_step == "non_anchor":
-            means[:, :, 0::2, :] = means_new[:, :, 0::2, 1::2]
-            means[:, :, 1::2, :] = means_new[:, :, 1::2, 0::2]
-            scales[:, :, 0::2, :] = scales_new[:, :, 0::2, 1::2]
-            scales[:, :, 1::2, :] = scales_new[:, :, 1::2, 0::2]
+        self._unembed(means, means_new, mode_step)
+        self._unembed(scales, scales_new, mode_step)
 
         indexes = self.gaussian_conditional.build_indexes(scales)
 
         if mode_codec == "compress":
             y = y_input
             y_encode = torch.zeros(encode_shape).to(device)
-
-            if mode_step == "anchor":
-                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 0::2]
-                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 1::2]
-            elif mode_step == "non_anchor":
-                y_encode[:, :, 0::2, :] = y[:, :, 0::2, 1::2]
-                y_encode[:, :, 1::2, :] = y[:, :, 1::2, 0::2]
-
+            self._unembed(y_encode, y, mode_step)
             strings = self.gaussian_conditional.compress(y_encode, indexes, means=means)
 
         elif mode_codec == "decompress":
@@ -703,21 +677,60 @@ class TestModel(CompressionModel):
 
         quantized = self.gaussian_conditional.decompress(strings, indexes, means=means)
         y_decode = torch.zeros(decode_shape).to(device)
-
-        if mode_step == "anchor":
-            y_decode[:, :, 0::2, 0::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 1::2] = quantized[:, :, 1::2, :]
-        elif mode_step == "non_anchor":
-            y_decode[:, :, 0::2, 1::2] = quantized[:, :, 0::2, :]
-            y_decode[:, :, 1::2, 0::2] = quantized[:, :, 1::2, :]
+        self._embed(y_decode, quantized, mode_step)
 
         return strings, y_decode
 
-    def _unembed(self, y):
-        anchor = torch.zeros_like(y).to(y.device)
-        non_anchor = torch.zeros_like(y).to(y.device)
-        anchor[:, :, 0::2, 0::2] = y[:, :, 0::2, 0::2]
-        anchor[:, :, 1::2, 1::2] = y[:, :, 1::2, 1::2]
-        non_anchor[:, :, 0::2, 1::2] = y[:, :, 0::2, 1::2]
-        non_anchor[:, :, 1::2, 0::2] = y[:, :, 1::2, 0::2]
-        return anchor, non_anchor
+    def _copy(self, dest, src, mode):
+        """Copy pixels in the current mode (i.e. anchor / non-anchor)."""
+        if mode == "anchor":
+            dest[:, :, 0::2, 0::2] = src[:, :, 0::2, 0::2]
+            dest[:, :, 1::2, 1::2] = src[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            dest[:, :, 0::2, 1::2] = src[:, :, 0::2, 1::2]
+            dest[:, :, 1::2, 0::2] = src[:, :, 1::2, 0::2]
+
+    def _unembed(self, dest, src, mode):
+        """Compactly extract pixels for the given mode.
+
+        src                     dest
+
+        ■ □ ■ □                 ■ ■           □ □
+        □ ■ □ ■       --->      ■ ■           □ □
+        ■ □ ■ □                 ■ ■           □ □
+                                anchor        non-anchor
+        """
+        if mode == "anchor":
+            dest[:, :, 0::2, :] = src[:, :, 0::2, 0::2]
+            dest[:, :, 1::2, :] = src[:, :, 1::2, 1::2]
+        elif mode == "non_anchor":
+            dest[:, :, 0::2, :] = src[:, :, 0::2, 1::2]
+            dest[:, :, 1::2, :] = src[:, :, 1::2, 0::2]
+
+    def _embed(self, dest, src, mode):
+        """Insert pixels for the given mode.
+
+        src                                   dest
+
+        ■ ■           □ □                     ■ □ ■ □
+        ■ ■           □ □           --->      □ ■ □ ■
+        ■ ■           □ □                     ■ □ ■ □
+        anchor        non-anchor
+        """
+        if mode == "anchor":
+            dest[:, :, 0::2, 0::2] = src[:, :, 0::2, :]
+            dest[:, :, 1::2, 1::2] = src[:, :, 1::2, :]
+        elif mode == "non_anchor":
+            dest[:, :, 0::2, 1::2] = src[:, :, 0::2, :]
+            dest[:, :, 1::2, 0::2] = src[:, :, 1::2, :]
+
+    def _keep_only(self, y, mode):
+        """Keep only pixels in the current mode, and zero out the rest."""
+        if mode == "anchor":
+            # Zero the non-anchors:
+            y[:, :, 0::2, 1::2] = 0
+            y[:, :, 1::2, 0::2] = 0
+        elif mode == "non_anchor":
+            # Zero the anchors:
+            y[:, :, 0::2, 0::2] = 0
+            y[:, :, 1::2, 1::2] = 0
